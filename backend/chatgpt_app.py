@@ -1144,6 +1144,11 @@ faiss_cache = {}
 retrieval_cache = {}
 summary_cache = {}
 
+# Add this near your other endpoints
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
 @app.post("/api/v1/hackrx/run")
 async def hackrx_run(request: Request, authorization: str = Header(None)):
     # Deprecated endpoint retained for backward compatibility; returns 410 Gone
