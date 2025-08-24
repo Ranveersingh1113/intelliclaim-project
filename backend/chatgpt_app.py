@@ -221,16 +221,13 @@ class DocumentProcessor:
 class GPT5Client:
     def __init__(self, api_key):
         self.api_key = api_key
-        self.model = "openai/gpt-4o"  # Using GPT-5 as required by hackathon
+        self.primary_model = "openai/gpt-5-mini-2025-08-07"  # Primary model to try first
         self.fallback_models = [
-            "openai/gpt-5-mini-2025-08-07",  # Faster fallback
-            "openai/gpt-5-chat-latest"       # Latest version fallback
+            "openai/gpt-5-2025-08-07",      # Fallback 1: Full GPT-5
+            "openai/gpt-5-chat-latest",     # Fallback 2: Latest version
+            "openai/gpt-4o-mini",           # Fallback 3: GPT-4 mini
+            "openai/gpt-3.5-turbo"          # Fallback 4: GPT-3.5 as last resort
         ]
-        # Production reliability settings
-        self.max_retries_per_model = 2
-        self.model_switch_threshold = 3  # Switch model after 3 consecutive failures
-        self.consecutive_failures = {}  # Track failures per model
-        self.model_performance = {}  # Track success rates
         self.client = OpenAI(
             base_url="https://api.aimlapi.com/v1",
             api_key=self.api_key,
@@ -238,124 +235,58 @@ class GPT5Client:
 
 
     async def generate_content_async(self, prompt, **kwargs):
-        max_retries = kwargs.get("max_retries", self.max_retries_per_model)
-        
-        # Intelligent model selection based on performance history
-        models_to_try = self._get_optimal_model_order()
-        
-        for model_idx, model_to_use in enumerate(models_to_try):
-            logger.info(f"Trying model: {model_to_use} (Performance: {self.model_performance.get(model_to_use, 'Unknown')})")
+        # Try primary model (gpt-5-mini) once
+        try:
+            logger.info(f"Trying primary model: {self.primary_model}")
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=self.primary_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=kwargs.get("temperature", 0),
+                max_tokens=kwargs.get("max_tokens", 1000),
+                stream=False,
+                timeout=30  # Shorter timeout for mini model
+            )
             
-            # Skip models with too many consecutive failures
-            if self.consecutive_failures.get(model_to_use, 0) >= self.model_switch_threshold:
-                logger.warning(f"Skipping {model_to_use} due to {self.consecutive_failures[model_to_use]} consecutive failures")
-                continue
-            
-            for attempt in range(max_retries + 1):
-                try:
-                    # Optimize for speed: reduce max_tokens, use faster model variant if available
-                    max_tokens = kwargs.get("max_tokens", 1000)  # Reduced from 2000
-                    temperature = kwargs.get("temperature", 0)
-                    
-                    response = await asyncio.to_thread(
-                        self.client.chat.completions.create,
-                        model=model_to_use,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        # Add performance optimizations
-                        stream=False,  # Ensure no streaming for faster response
-                        timeout=60  # Increased timeout for GPT-5 which may be slower
-                    )
-                    
-                    content = response.choices[0].message.content
-                    logger.info(f"Raw GPT-5 response content: '{content}' (length: {len(content) if content else 0})")
-                    
-                    if not content or not content.strip():
-                        logger.error(f"Empty response from {model_to_use}. Response object: {response}")
-                        logger.error(f"Response choices: {response.choices}")
-                        if response.choices and response.choices[0]:
-                            logger.error(f"First choice message: {response.choices[0].message}")
-                        raise ValueError(f"Empty response from {model_to_use}")
-                    
-                    # Success! Update performance metrics
-                    self._record_success(model_to_use)
-                    logger.info(f"Successfully generated content with {model_to_use}")
+            content = response.choices[0].message.content
+            if content and content.strip():
+                logger.info(f"Successfully generated content with primary model: {self.primary_model}")
+                return content
+            else:
+                raise ValueError(f"Empty response from {self.primary_model}")
+                
+        except Exception as e:
+            logger.warning(f"Primary model {self.primary_model} failed: {str(e)}. Switching to fallback models...")
+        
+        # Try fallback models in sequence
+        for fallback_model in self.fallback_models:
+            try:
+                logger.info(f"Trying fallback model: {fallback_model}")
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    model=fallback_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=kwargs.get("temperature", 0),
+                    max_tokens=kwargs.get("max_tokens", 1000),
+                    stream=False,
+                    timeout=60  # Longer timeout for fallback models
+                )
+                
+                content = response.choices[0].message.content
+                if content and content.strip():
+                    logger.info(f"Successfully generated content with fallback model: {fallback_model}")
                     return content
+                else:
+                    raise ValueError(f"Empty response from {fallback_model}")
                     
-                except Exception as e:
-                    error_msg = str(e)
-                    logger.error(f"AI/ML API error with {model_to_use} (attempt {attempt + 1}/{max_retries + 1}): {error_msg}")
-                    
-                    # Handle specific GPT-5 errors
-                    if "timeout" in error_msg.lower():
-                        logger.error(f"{model_to_use} request timed out")
-                    elif "rate limit" in error_msg.lower() or "429" in error_msg:
-                        logger.error(f"Rate limit exceeded with {model_to_use}")
-                    elif "model not found" in error_msg.lower():
-                        logger.error(f"{model_to_use} not available - trying next model")
-                        self._record_failure(model_to_use, "model_not_found")
-                        break  # Try next model immediately
-                    elif "empty response" in error_msg.lower():
-                        logger.error(f"{model_to_use} returned empty response")
-                        self._record_failure(model_to_use, "empty_response")
-                    
-                    # If this is the last attempt for this model, try the next model
-                    if attempt == max_retries:
-                        if model_idx < len(models_to_try) - 1:
-                            logger.info(f"Switching to next model after {model_to_use} failed")
-                            break  # Try next model
-                        else:
-                            # This was the last model, raise the error
-                            raise e
-                    
-                    # Wait before retrying (exponential backoff)
-                    wait_time = 2 ** attempt
-                    logger.info(f"Retrying {model_to_use} in {wait_time} seconds...")
-                    await asyncio.sleep(wait_time)
+            except Exception as e:
+                logger.warning(f"Fallback model {fallback_model} failed: {str(e)}")
+                continue
         
-        # If we get here, all models failed
-        raise Exception("All GPT-5 models failed to generate content")
+        # If all models failed
+        raise Exception("All models failed to generate content")
     
-    def _get_optimal_model_order(self):
-        """Return models in order of best performance"""
-        models = [self.model] + self.fallback_models
-        
-        # Sort by success rate (highest first)
-        def get_success_rate(model):
-            if model not in self.model_performance:
-                return 0.5  # Default to 50% for unknown models
-            return self.model_performance[model].get('success_rate', 0.5)
-        
-        return sorted(models, key=get_success_rate, reverse=True)
-    
-    def _record_success(self, model):
-        """Record successful response from a model"""
-        if model not in self.model_performance:
-            self.model_performance[model] = {'successes': 0, 'failures': 0, 'success_rate': 0.0}
-        
-        self.model_performance[model]['successes'] += 1
-        total = self.model_performance[model]['successes'] + self.model_performance[model]['failures']
-        self.model_performance[model]['success_rate'] = self.model_performance[model]['successes'] / total
-        
-        # Reset consecutive failures on success
-        self.consecutive_failures[model] = 0
-        
-        logger.info(f"Model {model} performance updated: {self.model_performance[model]}")
-    
-    def _record_failure(self, model, failure_type):
-        """Record failure from a model"""
-        if model not in self.model_performance:
-            self.model_performance[model] = {'successes': 0, 'failures': 0, 'success_rate': 0.0}
-        
-        self.model_performance[model]['failures'] += 1
-        total = self.model_performance[model]['successes'] + self.model_performance[model]['failures']
-        self.model_performance[model]['success_rate'] = self.model_performance[model]['successes'] / total
-        
-        # Increment consecutive failures
-        self.consecutive_failures[model] = self.consecutive_failures.get(model, 0) + 1
-        
-        logger.warning(f"Model {model} failure recorded: {failure_type}. Consecutive failures: {self.consecutive_failures[model]}")
+
 
 
 def clean_json_response(text: str) -> str:
@@ -1010,7 +941,7 @@ async def test_aimlapi():
     try:
         model = GPT5Client(os.getenv("AIMLAPI_KEY"))
         response = await model.generate_content_async("Say 'Hello World' in JSON format: {\"message\": \"Hello World\"}")
-        return {"status": "success", "response": response, "model": model.model}
+        return {"status": "success", "response": response, "primary_model": model.primary_model}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -1038,7 +969,7 @@ async def test_gpt5_json():
                 "raw_response": response,
                 "cleaned_response": cleaned,
                 "parsed_json": parsed,
-                "model": model.model
+                "primary_model": model.primary_model
             }
         except json.JSONDecodeError as e:
             return {
@@ -1046,7 +977,7 @@ async def test_gpt5_json():
                 "raw_response": response,
                 "cleaned_response": cleaned,
                 "error": str(e),
-                "model": model.model
+                "primary_model": model.primary_model
             }
     except Exception as e:
         return {"status": "error", "error": str(e)}
@@ -1068,7 +999,7 @@ async def test_gpt5_debug():
             "prompt": simple_prompt,
             "response": response,
             "response_length": len(response) if response else 0,
-            "model_used": model.model,
+            "primary_model": model.primary_model,
             "response_type": type(response).__name__
         }
     except Exception as e:
@@ -1079,45 +1010,24 @@ async def test_gpt5_debug():
             "error_type": type(e).__name__
         }
 
-@app.get("/model-performance")
-async def get_model_performance():
-    """Monitor model performance and reliability metrics"""
+@app.get("/model-config")
+async def get_model_config():
+    """Get current model configuration"""
     try:
         model = GPT5Client(os.getenv("AIMLAPI_KEY"))
-        
         return {
             "status": "success",
-            "primary_model": model.model,
+            "primary_model": model.primary_model,
             "fallback_models": model.fallback_models,
-            "performance_metrics": model.model_performance,
-            "consecutive_failures": model.consecutive_failures,
-            "recommendations": _generate_model_recommendations(model)
+            "description": "System will try primary model once, then fall back to fallback models in sequence"
         }
     except Exception as e:
-        logger.error(f"Failed to get model performance: {e}")
         return {
             "status": "error", 
             "error": str(e)
         }
 
-def _generate_model_recommendations(model):
-    """Generate recommendations based on model performance"""
-    recommendations = []
-    
-    for model_name, metrics in model.model_performance.items():
-        success_rate = metrics.get('success_rate', 0)
-        consecutive_failures = model.consecutive_failures.get(model_name, 0)
-        
-        if success_rate < 0.7:
-            recommendations.append(f"Model {model_name} has low success rate ({success_rate:.1%}) - consider investigation")
-        
-        if consecutive_failures >= model.model_switch_threshold:
-            recommendations.append(f"Model {model_name} has {consecutive_failures} consecutive failures - temporarily disabled")
-    
-    if not recommendations:
-        recommendations.append("All models performing well")
-    
-    return recommendations
+
 
 
 @app.get("/documents")
