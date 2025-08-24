@@ -201,7 +201,7 @@ const IntelliClaimDemo = () => {
               </div>
               <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">IntelliClaim</h1>
             </div>
-            <p className="text-lg text-gray-600">Next-Generation AI Document Processing</p>
+            <p className="text-lg text-gray-600">AI-Powered Insurance Claims Processing & Analysis</p>
         </div>
 
         {/* System Stats */}
