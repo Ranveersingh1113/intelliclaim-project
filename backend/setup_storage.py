@@ -63,7 +63,7 @@ def validate_environment():
     """Validate environment variables and configuration"""
     print("Validating environment configuration...")
     
-    required_vars = ["GOOGLE_API_KEY"]
+    required_vars = ["AIMLAPI_KEY"]
     optional_vars = ["ENVIRONMENT", "RENDER", "PORT", "CHROMA_PERSIST_DIR", "UPLOAD_DIR", "FAISS_CACHE_DIR"]
     
     # Check required variables
@@ -80,7 +80,7 @@ def validate_environment():
     print("Environment variables:")
     for var in required_vars + optional_vars:
         value = os.getenv(var, "not set")
-        if var == "GOOGLE_API_KEY":
+        if var == "AIMLAPI_KEY":
             # Mask API key for security
             display_value = f"{value[:8]}..." if len(value) > 8 else "***"
         else:
