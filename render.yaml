@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: intelliclaim-backend
+    env: python
+    plan: starter
+    region: oregon  # You can change this to your preferred region
+    pythonVersion: "3.13"
+    buildCommand: |
+      cd backend
+      chmod +x build.sh
+      ./build.sh
+    startCommand: |
+      cd backend
+      python setup_storage.py
+      uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false  # This will be set manually in Render dashboard
+      - key: ENVIRONMENT
+        value: production
+      - key: RENDER
+        value: true
+      - key: CHROMA_PERSIST_DIR
+        value: ./chroma_db
+      - key: UPLOAD_DIR
+        value: ./uploads
+      - key: FAISS_CACHE_DIR
+        value: ./faiss_cache
+
+    buildFilter:
+      paths:
+        - backend/**
+        - requirements.txt
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /backend/*

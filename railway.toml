@@ -1,0 +1,16 @@
+[build]
+builder = "nixpacks"
+rootDir = "backend"
+
+[deploy]
+startCommand = "python setup_storage.py && uvicorn app:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+
+[deploy.envs]
+ENVIRONMENT = "production"
+RAILWAY = "true"
+CHROMA_PERSIST_DIR = "./chroma_db"
+UPLOAD_DIR = "./uploads"
+FAISS_CACHE_DIR = "./faiss_cache"
