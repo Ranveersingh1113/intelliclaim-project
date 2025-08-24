@@ -2,11 +2,11 @@
 
 ## 🎯 Project Overview
 
-IntelliClaim is a next-generation AI-powered document processing system designed for insurance claims adjudication. It uses advanced RAG (Retrieval-Augmented Generation) technology with Google's Gemini AI to provide intelligent, explainable decisions on insurance claims.
+IntelliClaim is a next-generation AI-powered document processing system designed for insurance claims adjudication. It uses advanced RAG (Retrieval-Augmented Generation) technology with GPT-5 through AIMLAPI to provide intelligent, explainable decisions on insurance claims.
 
 ## ✨ Key Features
 
-- **🤖 Gemini AI Integration**: Powered by Google's Gemini 1.5 Pro for intelligent reasoning
+- **🤖 GPT-5 AI Integration**: Powered by OpenAI's GPT-5 through AIMLAPI for intelligent reasoning
 - **📄 Multi-Format Support**: PDF, DOCX, and email document processing
 - **🧠 Multi-Agent RAG Pipeline**: Specialized agents for query understanding, retrieval, and decision making
 - **🎯 Clause-Aware Retrieval**: Insurance-specific keyword biasing and context windowing
@@ -17,12 +17,12 @@ IntelliClaim is a next-generation AI-powered document processing system designed
 
 ## 🚀 Current Status
 
-✅ **Backend**: Fully functional with Gemini AI integration  
+✅ **Backend**: Fully functional with GPT-5 AI integration via AIMLAPI  
 ✅ **Frontend**: Modern React UI with Tailwind CSS  
 ✅ **RAG Pipeline**: Multi-agent system with specialized agents  
 ✅ **Document Processing**: PDF/DOCX/Email with intelligent chunking  
 ✅ **API Endpoints**: Complete REST API with health checks  
-✅ **Vector Storage**: ChromaDB with BGE-M3 embeddings  
+✅ **Vector Storage**: ChromaDB with sentence-transformers embeddings  
 ✅ **Error Handling**: Comprehensive fallbacks and retry logic  
 ✅ **Configuration**: Environment-driven config system  
 
@@ -51,7 +51,7 @@ IntelliClaim is a next-generation AI-powered document processing system designed
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Frontend      │    │   Backend       │    │   AI Services   │
-│   (React)       │◄──►│   (FastAPI)     │◄──►│   (Gemini)      │
+│   (React)       │◄──►│   (FastAPI)     │◄──►│   (GPT-5)      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                               │
                               ▼
@@ -74,7 +74,7 @@ IntelliClaim is a next-generation AI-powered document processing system designed
 - **Vector Indexing**: < 10 seconds for 100-page documents
 - **Decision Accuracy**: > 85% confidence threshold
 - **System Uptime**: 99.9% availability target
-- **Memory Usage**: < 2GB for Gemini-only setup
+- **Memory Usage**: < 2GB for GPT-5 setup
 
 ## 🔍 Advanced Features
 
@@ -94,7 +94,7 @@ The system automatically detects insurance-specific terms and biases retrieval:
 ### **Multi-Agent RAG Pipeline**
 1. **Query Understanding Agent**: Entity extraction and query structuring
 2. **Semantic Retrieval Agent**: Document retrieval with relevance scoring
-3. **Decision Reasoning Agent**: AI-powered decision making
+3. **Decision Reasoning Agent**: AI-powered decision making with GPT-5
 4. **Explainability Agent**: Audit trails and clause mappings
 
 ### **Intelligent Processing**
@@ -108,7 +108,7 @@ The system automatically detects insurance-specific terms and biases retrieval:
 ### Prerequisites
 - **Python**: 3.8+
 - **Node.js**: 16+
-- **Google Gemini API Key**: Required for AI processing
+- **AIMLAPI Key**: Required for GPT-5 AI processing
 
 ### Quick Start
 
@@ -118,11 +118,11 @@ cd backend
 pip install -r requirements.txt
 
 # Set environment variables
-export GOOGLE_API_KEY="your_gemini_api_key"
+export AIMLAPI_KEY="your_aimlapi_key"
 export ENVIRONMENT="development"
 
 # Run the server
-python app.py
+python chatgpt_app.py
 ```
 
 #### 2. Frontend Setup
@@ -137,7 +137,7 @@ npm start
 # Test API endpoints
 python test_api.py
 
-# Test Gemini integration
+# Test GPT-5 integration
 python test_gemini_integration.py
 
 # Comprehensive system test
@@ -147,7 +147,7 @@ python test_system.py
 ### Environment Variables
 ```env
 # Required
-GOOGLE_API_KEY=your_gemini_api_key
+AIMLAPI_KEY=your_aimlapi_key
 
 # Optional
 ENVIRONMENT=development
@@ -187,14 +187,14 @@ curl -X POST "http://localhost:8000/upload-document-url" \
 # Health check
 GET /health
 
-# System statistics
-GET /system-stats
+# Test GPT-5 connection
+GET /test-aimlapi
 
-# List documents
-GET /documents
+# Test GPT-5 JSON capabilities
+GET /test-gpt5-json
 
-# Test Gemini connection
-GET /test-gemini
+# Debug GPT-5 responses
+GET /test-gpt5-debug
 ```
 
 ## 🧪 Testing & Validation
@@ -257,10 +257,26 @@ pip install -r requirements.txt
 
 # Set production environment
 export ENVIRONMENT=production
-export GOOGLE_API_KEY="your_production_key"
+export AIMLAPI_KEY="your_production_key"
 
 # Run with uvicorn
-uvicorn backend.app:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn backend.chatgpt_app:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+### Render Deployment
+```yaml
+# render.yaml configuration
+services:
+  - type: web
+    name: intelliclaim-backend
+    env: python
+    plan: starter
+    pythonVersion: "3.11"
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && python setup_storage.py && uvicorn chatgpt_app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: AIMLAPI_KEY
+        sync: false
 ```
 
 ### Docker Deployment
@@ -274,12 +290,12 @@ RUN pip install -r requirements.txt
 COPY backend/ .
 EXPOSE 8000
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "chatgpt_app:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ## 🔐 Security Features
 
-- **API Key Authentication**: Gemini API key validation
+- **API Key Authentication**: AIMLAPI key validation
 - **Input Sanitization**: Document type and size validation
 - **Secure File Handling**: Temporary file cleanup
 - **Error Masking**: Production-safe error messages
@@ -304,19 +320,20 @@ CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
 
 - **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **Deployment Guide**: [DEPLOYMENT.md](DEPLOYMENT.md)
+- **Render Deployment**: [RENDER_DEPLOYMENT_CHECKLIST.md](RENDER_DEPLOYMENT_CHECKLIST.md)
 - **Configuration**: See `backend/config.py` for all settings
 
 ## 🆘 Troubleshooting
 
 ### Common Issues
 
-#### Gemini API Errors
+#### AIMLAPI Errors
 ```bash
 # Verify API key
-echo $GOOGLE_API_KEY
+echo $AIMLAPI_KEY
 
-# Check quota limits
-curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GOOGLE_API_KEY"
+# Test GPT-5 connection
+curl "http://localhost:8000/test-aimlapi"
 ```
 
 #### Document Processing Issues
@@ -337,10 +354,20 @@ ls -la backend/chroma_db/
 rm -rf backend/chroma_db/
 ```
 
+### Render Deployment Issues
+```bash
+# Check storage setup
+cd backend
+python setup_storage.py
 
+# Verify environment variables
+echo $AIMLAPI_KEY
+echo $ENVIRONMENT
+echo $RENDER
+```
 
 ---
 
-**🚀 Ready to revolutionize insurance claims processing? Start with the quick setup above and experience the power of AI-driven decision making!**
+**🚀 Ready to revolutionize insurance claims processing? Start with the quick setup above and experience the power of GPT-5 AI-driven decision making!**
 
 *For questions and support, check the troubleshooting section or create a GitHub issue.* 
