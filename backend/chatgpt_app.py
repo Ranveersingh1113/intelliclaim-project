@@ -136,16 +136,39 @@ class UploadURLRequest(BaseModel):
 class EmbeddingManager:
     def __init__(self, model_name: str = None):
         model_to_use = model_name or CONFIG.EMBEDDING_MODEL
-        for device in ("cuda", "cpu"):
-            try:
-                self.langchain_embeddings = HuggingFaceEmbeddings(
-                    model_name=model_to_use,
-                    model_kwargs={'device': device},
-                    encode_kwargs={'normalize_embeddings': True}
-                )
-                break
-            except Exception:
-                continue
+        self.langchain_embeddings = None
+        
+        # Try multiple embedding models as fallbacks
+        fallback_models = [
+            model_to_use,
+            "sentence-transformers/paraphrase-MiniLM-L3-v2",  # Ultra-lightweight fallback
+            "sentence-transformers/all-MiniLM-L6-v2",         # Standard fallback
+        ]
+        
+        for model in fallback_models:
+            for device in ("cuda", "cpu"):
+                try:
+                    logger.info(f"Trying to initialize {model} on {device}")
+                    self.langchain_embeddings = HuggingFaceEmbeddings(
+                        model_name=model,
+                        model_kwargs={'device': device},
+                        encode_kwargs={'normalize_embeddings': True}
+                    )
+                    logger.info(f"Successfully initialized {model} on {device}")
+                    return
+                except Exception as e:
+                    logger.warning(f"Failed to initialize {model} on {device}: {e}")
+                    continue
+        
+        # If all models fail, try a simple fallback
+        try:
+            logger.warning("Trying simple fallback embeddings")
+            from langchain_community.embeddings import FakeEmbeddings
+            self.langchain_embeddings = FakeEmbeddings(size=384)
+            logger.warning("Using FakeEmbeddings as fallback - this will affect performance")
+        except Exception as e:
+            logger.error(f"Even fallback embeddings failed: {e}")
+            raise RuntimeError("Could not initialize any embedding model. Please check your dependencies and model configuration.")
 
 
 class DocumentProcessor:

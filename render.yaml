@@ -4,11 +4,10 @@ services:
     env: python
     plan: starter
     region: oregon  # You can change this to your preferred region
-    pythonVersion: "3.13"
+    pythonVersion: "3.11"
     buildCommand: |
       cd backend
-      chmod +x build.sh
-      ./build.sh
+      pip install -r requirements.txt
     startCommand: |
       cd backend
       python setup_storage.py
