@@ -1,1 +1,2 @@
 nodejs
+# Explicitly avoid Python buildpacks
