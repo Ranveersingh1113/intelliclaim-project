@@ -19,6 +19,7 @@ pydantic>=2.8.0
 
 # AI APIs
 openai>=1.0.0
+tiktoken>=0.5.0
 
 # Vector database (lighter version)
 chromadb==0.5.5
