@@ -12,13 +12,3 @@ services:
       - key: REACT_APP_API_URL
         value: https://intelliclaim-project.onrender.com   # Update with your backend URL
     autoDeploy: true
-    buildFilter:
-      paths:
-        - frontend/**
-      ignore:
-        - "**/*.py"
-        - "**/requirements.txt"
-        - "**/__pycache__/**"
-        - "**/backend/**"
-        - "**/venv/**"
-        - "**/.venv/**"
