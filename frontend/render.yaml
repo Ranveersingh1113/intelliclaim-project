@@ -3,9 +3,13 @@ services:
     name: intelliclaim-frontend
     env: static
     plan: starter
-    buildCommand: npm run build
-    staticPublishPath: ./build
+    region: oregon
+    buildCommand: |
+      cd frontend
+      npm ci
+      npm run build
+    staticPublishPath: ./frontend/build
     envVars:
       - key: REACT_APP_API_URL
-        value: https://your-backend-domain.onrender.com  # Update with your backend URL
+        value: @https://intelliclaim-project.onrender.com   # Update with your backend URL
     autoDeploy: true
