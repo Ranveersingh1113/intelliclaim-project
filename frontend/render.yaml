@@ -5,8 +5,6 @@ services:
     plan: starter
     region: oregon
     runtime: node
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
     staticPublishPath: ./build
     envVars:
       - key: REACT_APP_API_URL
