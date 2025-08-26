@@ -26,7 +26,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel
@@ -48,6 +48,8 @@ logger = logging.getLogger(__name__)
 # MODIFIED: Check for AI/ML API Key
 if not os.getenv("AIMLAPI_KEY"):
     raise ValueError("AIMLAPI_KEY environment variable not set.")
+if not os.getenv("OPENAI_API_KEY"):
+    raise ValueError("OPENAI_API_KEY environment variable not set.")
 
 
 # Configure AI/ML API
@@ -135,41 +137,24 @@ class UploadURLRequest(BaseModel):
 # --- Core RAG Components (No Changes) ---
 class EmbeddingManager:
     def __init__(self, model_name: str = None):
-        model_to_use = model_name or CONFIG.EMBEDDING_MODEL
-        self.langchain_embeddings = None
-        
-        # Try multiple embedding models as fallbacks
-        fallback_models = [
-            model_to_use,
-            "sentence-transformers/paraphrase-MiniLM-L3-v2",  # Ultra-lightweight fallback
-            "sentence-transformers/all-MiniLM-L6-v2",         # Standard fallback
-        ]
-        
-        for model in fallback_models:
-            for device in ("cuda", "cpu"):
-                try:
-                    logger.info(f"Trying to initialize {model} on {device}")
-                    self.langchain_embeddings = HuggingFaceEmbeddings(
-                        model_name=model,
-                        model_kwargs={'device': device},
-                        encode_kwargs={'normalize_embeddings': True}
-                    )
-                    logger.info(f"Successfully initialized {model} on {device}")
-                    return
-                except Exception as e:
-                    logger.warning(f"Failed to initialize {model} on {device}: {e}")
-                    continue
-        
-        # If all models fail, try a simple fallback
+        # Use OpenAI embeddings with separate API key
         try:
-            logger.warning("Trying simple fallback embeddings")
-            from langchain_community.embeddings import FakeEmbeddings
-            self.langchain_embeddings = FakeEmbeddings(size=384)
-            logger.warning("Using FakeEmbeddings as fallback - this will affect performance")
+            self.langchain_embeddings = OpenAIEmbeddings(
+                openai_api_key=os.getenv("OPENAI_API_KEY"),  # Use OpenAI API key
+                model="text-embedding-3-small",  # OpenAI's best embedding model
+                chunk_size=1000
+            )
+            logger.info("Successfully initialized OpenAI embeddings")
         except Exception as e:
-            logger.error(f"Even fallback embeddings failed: {e}")
-            raise RuntimeError("Could not initialize any embedding model. Please check your dependencies and model configuration.")
-
+            logger.error(f"Failed to initialize OpenAI embeddings: {e}")
+            # Fallback to FakeEmbeddings if OpenAI fails
+            try:
+                from langchain_community.embeddings import FakeEmbeddings
+                self.langchain_embeddings = FakeEmbeddings(size=1536)  # OpenAI embedding dimension
+                logger.warning("Using FakeEmbeddings as fallback - this will affect performance")
+            except Exception as fallback_error:
+                logger.error(f"Even fallback embeddings failed: {fallback_error}")
+                raise RuntimeError("Could not initialize any embedding model. Please check your OpenAI API configuration.")
 
 class DocumentProcessor:
     def __init__(self):

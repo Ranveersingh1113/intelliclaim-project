@@ -27,6 +27,8 @@ services:
         value: ./uploads
       - key: FAISS_CACHE_DIR
         value: ./faiss_cache
+      - key: OPENAI_API_KEY
+        sync: false  # Set this manually in Render dashboard
 
     buildFilter:
       paths:

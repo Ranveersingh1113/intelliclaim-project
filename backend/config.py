@@ -13,8 +13,12 @@ class Config:
     # API_PORT is now handled by the PORT environment variable (see below)
     
     # Model Configuration
-    EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # Lightweight, 384d, 80MB
+    EMBEDDING_MODEL = "text-embedding-3-small"  # Lightweight, 384d, 80MB
     LLM_MODEL = "openai/gpt-5-2025-08-07"  # Hackathon requirement
+
+    # API Keys
+    AIMLAPI_KEY = os.getenv("AIMLAPI_KEY")
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # New OpenAI API key for embeddings
     
     # Document Processing
     CHUNK_SIZE = 2000
