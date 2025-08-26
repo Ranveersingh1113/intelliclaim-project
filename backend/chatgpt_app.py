@@ -909,7 +909,7 @@ class IntelliClaimRAG:
 app = FastAPI(title=get_config().API_TITLE, version=get_config().API_VERSION)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["https://intelliclaim-frontend.onrender.com","*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
 
