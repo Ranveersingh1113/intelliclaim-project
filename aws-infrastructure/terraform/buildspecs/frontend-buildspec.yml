@@ -1,0 +1,48 @@
+# Frontend Buildspec for CodeBuild
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - cd frontend
+      - REPOSITORY_URI=$ECR_REPOSITORY_URI
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:=latest}
+
+  build:
+    commands:
+      - echo Build started on `date`
+      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:$IMAGE_TAG
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:latest
+
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - docker push $REPOSITORY_URI:latest
+      - echo Extracting static files for S3 deployment...
+      - docker create --name temp-container $IMAGE_REPO_NAME:$IMAGE_TAG
+      - docker cp temp-container:/usr/share/nginx/html ./build
+      - docker rm temp-container
+      - echo Syncing files to S3...
+      - aws s3 sync ./build s3://$S3_BUCKET_NAME --delete
+
+artifacts:
+  files:
+    - build/**/*
+    - frontend/**/*
+  name: frontend-$(date +%Y-%m-%d)
+
+cache:
+  paths:
+    - '/root/.docker/**/*'
+
+env:
+  variables:
+    IMAGE_REPO_NAME: intelliclaim-frontend

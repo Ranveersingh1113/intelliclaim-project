@@ -1,0 +1,42 @@
+# IntelliClaim AWS Infrastructure - STUDENT BUDGET VERSION
+# Optimized for minimal costs and AWS Free Tier usage
+
+# Basic Configuration
+aws_region = "us-east-1"  # Cheapest region
+environment = "dev"
+project_name = "intelliclaim"
+
+# Networking Configuration - Minimal setup
+vpc_cidr = "10.0.0.0/16"
+availability_zones = 1  # Single AZ to save costs
+
+# Database Configuration - Free Tier Optimized
+db_instance_class = "db.t3.micro"  # Free tier eligible
+db_allocated_storage = 20  # Free tier limit
+db_max_allocated_storage = 20  # No auto-scaling to control costs
+
+# ECS Configuration - Minimal resources
+ecs_cpu = 256  # Minimum CPU units (0.25 vCPU)
+ecs_memory = 512  # Minimum memory (512 MB)
+ecs_desired_count = 1  # Single instance
+
+# Domain Configuration - Use CloudFront domain (free)
+domain_name = ""  # Leave empty to use CloudFront domain
+certificate_arn = ""  # Not needed without custom domain
+
+# Security Configuration
+allowed_cidr_blocks = ["0.0.0.0/0"]
+
+# Monitoring Configuration - Basic monitoring only
+enable_detailed_monitoring = false  # Save costs on detailed monitoring
+
+# Cost Optimization - Maximum savings
+enable_spot_instances = true  # Use spot instances for 70% savings
+
+# Backup Configuration - Minimal backups
+backup_retention_period = 1  # Keep only 1 day of backups
+
+# GitHub Configuration
+github_repository = "your-username/intelliclaim-project"
+github_branch = "main"
+github_connection_arn = ""  # Set after creating GitHub connection

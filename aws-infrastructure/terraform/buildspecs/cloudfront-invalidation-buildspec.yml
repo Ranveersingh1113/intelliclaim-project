@@ -1,0 +1,15 @@
+# CloudFront Invalidation Buildspec for CodeBuild
+version: 0.2
+
+phases:
+  build:
+    commands:
+      - echo Invalidation started on `date`
+      - echo Creating CloudFront invalidation...
+      - aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/*"
+      - echo Invalidation completed on `date`
+
+artifacts:
+  files:
+    - '**/*'
+  name: cloudfront-invalidation-$(date +%Y-%m-%d)

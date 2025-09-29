@@ -1,0 +1,43 @@
+# IntelliClaim AWS Infrastructure Variables
+# Copy this file to terraform.tfvars and update with your values
+
+# Basic Configuration
+aws_region = "us-east-1"
+environment = "dev"  # dev, staging, prod
+project_name = "intelliclaim"
+
+# Networking Configuration
+vpc_cidr = "10.0.0.0/16"
+availability_zones = 2
+
+# Database Configuration
+db_instance_class = "db.t3.micro"  # For dev, use db.t3.medium for prod
+db_allocated_storage = 20
+db_max_allocated_storage = 100
+db_password = "YourSecurePassword123!"  # Change this!
+
+# ECS Configuration
+ecs_cpu = 512  # CPU units (256, 512, 1024, 2048, 4096)
+ecs_memory = 1024  # Memory in MB
+ecs_desired_count = 1
+
+# Domain Configuration (optional)
+domain_name = ""  # e.g., "your-domain.com"
+certificate_arn = ""  # ARN of SSL certificate
+
+# Security Configuration
+allowed_cidr_blocks = ["0.0.0.0/0"]  # Restrict this in production
+
+# Monitoring Configuration
+enable_detailed_monitoring = true
+
+# Cost Optimization
+enable_spot_instances = false  # Set to true for cost savings
+
+# Backup Configuration
+backup_retention_period = 7  # Days
+
+# GitHub Configuration
+github_repository = "your-username/intelliclaim-project"
+github_branch = "main"
+github_connection_arn = ""  # Set after creating GitHub connection in AWS Console
