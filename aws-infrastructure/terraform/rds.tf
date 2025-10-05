@@ -55,23 +55,23 @@ resource "aws_db_parameter_group" "main" {
 
 # RDS Cluster
 resource "aws_rds_cluster" "main" {
-  cluster_identifier      = "${local.name}-aurora-cluster"
-  engine                  = "aurora-postgresql"
-  engine_mode             = "provisioned"
-  engine_version          = "15.4"
-  database_name           = "intelliclaim"
-  master_username         = "postgres"
-  master_password         = var.db_password
-  backup_retention_period = var.backup_retention_period
-  preferred_backup_window = "03:00-04:00"
+  cluster_identifier           = "${local.name}-aurora-cluster"
+  engine                       = "aurora-postgresql"
+  engine_mode                  = "provisioned"
+  engine_version               = "15.4"
+  database_name                = "intelliclaim"
+  master_username              = "postgres"
+  master_password              = var.db_password
+  backup_retention_period      = var.backup_retention_period
+  preferred_backup_window      = "03:00-04:00"
   preferred_maintenance_window = "sun:04:00-sun:05:00"
-  skip_final_snapshot    = var.environment != "prod"
-  final_snapshot_identifier = var.environment == "prod" ? "${local.name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
-  
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-  vpc_security_group_ids = [aws_security_group.rds.id]
+  skip_final_snapshot          = var.environment != "prod"
+  final_snapshot_identifier    = var.environment == "prod" ? "${local.name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
+
+  db_subnet_group_name            = aws_db_subnet_group.main.name
+  vpc_security_group_ids          = [aws_security_group.rds.id]
   db_cluster_parameter_group_name = aws_db_parameter_group.main.name
-  
+
   storage_encrypted = true
   kms_key_id        = aws_kms_key.rds.arn
 
@@ -82,7 +82,7 @@ resource "aws_rds_cluster" "main" {
 
 # RDS Cluster Instance
 resource "aws_rds_cluster_instance" "main" {
-  count              = 1  # Single instance for cost optimization
+  count              = 1 # Single instance for cost optimization
   identifier         = "${local.name}-aurora-instance-${count.index + 1}"
   cluster_identifier = aws_rds_cluster.main.id
   instance_class     = var.db_instance_class
@@ -167,5 +167,5 @@ variable "db_password" {
   description = "Master password for the database"
   type        = string
   sensitive   = true
-  default     = "TempPassword123!"  # Change this in production!
+  default     = "TempPassword123!" # Change this in production!
 }

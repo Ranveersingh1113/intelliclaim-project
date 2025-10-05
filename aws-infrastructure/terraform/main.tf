@@ -9,7 +9,7 @@ terraform {
       version = "~> 5.0"
     }
   }
-  
+
   # Uncomment and configure for remote state
   # backend "s3" {
   #   bucket = "intelliclaim-terraform-state"
@@ -20,7 +20,7 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
-  
+
   default_tags {
     tags = {
       Project     = "IntelliClaim"
@@ -40,7 +40,7 @@ data "aws_caller_identity" "current" {}
 # Local values
 locals {
   name = "intelliclaim-${var.environment}"
-  
+
   common_tags = {
     Project     = "IntelliClaim"
     Environment = var.environment

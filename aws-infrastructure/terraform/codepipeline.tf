@@ -44,9 +44,9 @@ variable "github_connection_arn" {
 
 # CodeBuild project for backend
 resource "aws_codebuild_project" "backend" {
-  name          = "${local.name}-backend-build"
-  description   = "Build and push backend Docker image"
-  service_role  = aws_iam_role.codebuild_role.arn
+  name         = "${local.name}-backend-build"
+  description  = "Build and push backend Docker image"
+  service_role = aws_iam_role.codebuild_role.arn
 
   artifacts {
     type = "CODEPIPELINE"
@@ -54,10 +54,10 @@ resource "aws_codebuild_project" "backend" {
 
   environment {
     compute_type                = "BUILD_GENERAL1_MEDIUM"
-    image                      = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
-    type                       = "LINUX_CONTAINER"
+    image                       = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+    type                        = "LINUX_CONTAINER"
     image_pull_credentials_type = "CODEBUILD"
-    privileged_mode            = true
+    privileged_mode             = true
 
     environment_variable {
       name  = "AWS_DEFAULT_REGION"
@@ -91,7 +91,7 @@ resource "aws_codebuild_project" "backend" {
   }
 
   source {
-    type = "CODEPIPELINE"
+    type      = "CODEPIPELINE"
     buildspec = file("${path.module}/buildspecs/backend-buildspec.yml")
   }
 
@@ -112,9 +112,9 @@ resource "aws_codebuild_project" "backend" {
 
 # CodeBuild project for frontend
 resource "aws_codebuild_project" "frontend" {
-  name          = "${local.name}-frontend-build"
-  description   = "Build and push frontend Docker image"
-  service_role  = aws_iam_role.codebuild_role.arn
+  name         = "${local.name}-frontend-build"
+  description  = "Build and push frontend Docker image"
+  service_role = aws_iam_role.codebuild_role.arn
 
   artifacts {
     type = "CODEPIPELINE"
@@ -122,8 +122,8 @@ resource "aws_codebuild_project" "frontend" {
 
   environment {
     compute_type                = "BUILD_GENERAL1_SMALL"
-    image                      = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
-    type                       = "LINUX_CONTAINER"
+    image                       = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+    type                        = "LINUX_CONTAINER"
     image_pull_credentials_type = "CODEBUILD"
 
     environment_variable {
@@ -153,7 +153,7 @@ resource "aws_codebuild_project" "frontend" {
   }
 
   source {
-    type = "CODEPIPELINE"
+    type      = "CODEPIPELINE"
     buildspec = file("${path.module}/buildspecs/frontend-buildspec.yml")
   }
 
@@ -284,9 +284,9 @@ resource "aws_codepipeline" "main" {
 
 # CodeBuild project for CloudFront invalidation
 resource "aws_codebuild_project" "cloudfront_invalidation" {
-  name          = "${local.name}-cloudfront-invalidation"
-  description   = "Invalidate CloudFront cache after deployment"
-  service_role  = aws_iam_role.codebuild_role.arn
+  name         = "${local.name}-cloudfront-invalidation"
+  description  = "Invalidate CloudFront cache after deployment"
+  service_role = aws_iam_role.codebuild_role.arn
 
   artifacts {
     type = "CODEPIPELINE"
@@ -304,7 +304,7 @@ resource "aws_codebuild_project" "cloudfront_invalidation" {
   }
 
   source {
-    type = "CODEPIPELINE"
+    type      = "CODEPIPELINE"
     buildspec = file("${path.module}/buildspecs/cloudfront-invalidation-buildspec.yml")
   }
 

@@ -156,14 +156,14 @@ resource "aws_cloudtrail" "main" {
   count = var.environment == "prod" ? 1 : 0
 
   name                          = "${local.name}-cloudtrail"
-  s3_bucket_name               = aws_s3_bucket.cloudtrail[0].bucket
+  s3_bucket_name                = aws_s3_bucket.cloudtrail[0].bucket
   include_global_service_events = true
-  is_multi_region_trail        = true
-  enable_logging               = true
+  is_multi_region_trail         = true
+  enable_logging                = true
 
   event_selector {
-    read_write_type                 = "All"
-    include_management_events       = true
+    read_write_type           = "All"
+    include_management_events = true
     data_resource {
       type   = "AWS::S3::Object"
       values = ["arn:aws:s3:::*/*"]
@@ -288,8 +288,8 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
 
 # AWS Systems Manager Parameter Store for sensitive configuration
 resource "aws_ssm_parameter" "app_config" {
-  name  = "/${local.name}/app/config"
-  type  = "String"
+  name = "/${local.name}/app/config"
+  type = "String"
   value = jsonencode({
     environment = var.environment
     region      = var.aws_region
@@ -301,8 +301,8 @@ resource "aws_ssm_parameter" "app_config" {
 
 # AWS Systems Manager Parameter Store for database connection
 resource "aws_ssm_parameter" "db_config" {
-  name  = "/${local.name}/database/config"
-  type  = "SecureString"
+  name = "/${local.name}/database/config"
+  type = "SecureString"
   value = jsonencode({
     host     = aws_rds_cluster.main.endpoint
     port     = aws_rds_cluster.main.port
@@ -351,7 +351,7 @@ resource "aws_backup_plan" "main" {
   rule {
     rule_name         = "${local.name}-backup-rule"
     target_vault_name = aws_backup_vault.main[0].name
-    schedule          = "cron(0 2 * * ? *)"  # Daily at 2 AM
+    schedule          = "cron(0 2 * * ? *)" # Daily at 2 AM
 
     lifecycle {
       cold_storage_after = 30
@@ -422,7 +422,7 @@ resource "aws_inspector_assessment_template" "main" {
 
   name       = "${local.name}-assessment"
   target_arn = aws_inspector_assessment_target.main[0].arn
-  duration   = 3600  # 1 hour
+  duration   = 3600 # 1 hour
 
   rules_package_arns = [
     "arn:aws:inspector:${var.aws_region}:316112463485:rulespackage/0-9hgA516p"

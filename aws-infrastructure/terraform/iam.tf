@@ -263,8 +263,8 @@ resource "aws_secretsmanager_secret" "main" {
 resource "aws_secretsmanager_secret_version" "main" {
   secret_id = aws_secretsmanager_secret.main.id
   secret_string = jsonencode({
-    AIMLAPI_KEY     = "your-aimlapi-key-here"
-    OPENAI_API_KEY  = "your-openai-key-here"
+    AIMLAPI_KEY    = "your-aimlapi-key-here"
+    OPENAI_API_KEY = "your-openai-key-here"
   })
 }
 

@@ -26,7 +26,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import OpenAIEmbeddings
+from sentence_transformers import SentenceTransformer
 from langchain_community.vectorstores import Chroma
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel
@@ -48,8 +48,6 @@ logger = logging.getLogger(__name__)
 # MODIFIED: Check for AI/ML API Key
 if not os.getenv("AIMLAPI_KEY"):
     raise ValueError("AIMLAPI_KEY environment variable not set.")
-if not os.getenv("OPENAI_API_KEY"):
-    raise ValueError("OPENAI_API_KEY environment variable not set.")
 
 
 # Configure AI/ML API
@@ -134,27 +132,62 @@ class UploadURLRequest(BaseModel):
     async_mode: Optional[bool] = False
 
 
-# --- Core RAG Components (No Changes) ---
+# --- Core RAG Components (Updated for Insurance-Specific Embeddings) ---
+class InsuranceEmbeddingWrapper:
+    """Wrapper to make SentenceTransformer compatible with LangChain embeddings interface"""
+    
+    def __init__(self, model_name: str = "llmware/industry-bert-insurance-v0.1"):
+        self.model = SentenceTransformer(model_name)
+        self.model_name = model_name
+        logger.info(f"Initialized SentenceTransformer with {model_name}")
+    
+    def embed_documents(self, texts: list) -> list:
+        """Embed a list of documents"""
+        try:
+            embeddings = self.model.encode(texts, convert_to_tensor=False)
+            return embeddings.tolist() if hasattr(embeddings, 'tolist') else embeddings
+        except Exception as e:
+            logger.error(f"Error embedding documents with {self.model_name}: {e}")
+            raise
+    
+    def embed_query(self, text: str) -> list:
+        """Embed a single query"""
+        try:
+            embedding = self.model.encode([text], convert_to_tensor=False)
+            return embedding.tolist()[0] if hasattr(embedding, 'tolist') else embedding[0]
+        except Exception as e:
+            logger.error(f"Error embedding query with {self.model_name}: {e}")
+            raise
+
 class EmbeddingManager:
     def __init__(self, model_name: str = None):
-        # Use OpenAI embeddings with separate API key
+        self.primary_model_name = CONFIG.EMBEDDING_MODEL  # industry-bert-insurance-v0.1
+        self.fallback_model_name = CONFIG.EMBEDDING_FALLBACK_MODEL  # all-MiniLM-L6-v2
+        
+        # Try insurance-specific model first
         try:
-            self.langchain_embeddings = OpenAIEmbeddings(
-                openai_api_key=os.getenv("OPENAI_API_KEY"),  # Use OpenAI API key
-                model="text-embedding-3-small",  # OpenAI's best embedding model
-                chunk_size=1000
-            )
-            logger.info("Successfully initialized OpenAI embeddings")
+            logger.info(f"Attempting to initialize insurance-specific embedding model: {self.primary_model_name}")
+            self.langchain_embeddings = InsuranceEmbeddingWrapper(self.primary_model_name)
+            logger.info(f"Successfully initialized {self.primary_model_name} - optimized for insurance documents")
         except Exception as e:
-            logger.error(f"Failed to initialize OpenAI embeddings: {e}")
-            # Fallback to FakeEmbeddings if OpenAI fails
+            logger.warning(f"Failed to initialize insurance model {self.primary_model_name}: {e}")
+            logger.info("Falling back to all-MiniLM-L6-v2...")
+            
+            # Fallback to all-MiniLM-L6-v2
             try:
-                from langchain_community.embeddings import FakeEmbeddings
-                self.langchain_embeddings = FakeEmbeddings(size=1536)  # OpenAI embedding dimension
-                logger.warning("Using FakeEmbeddings as fallback - this will affect performance")
+                self.langchain_embeddings = InsuranceEmbeddingWrapper(self.fallback_model_name)
+                logger.info(f"Successfully initialized fallback embeddings: {self.fallback_model_name}")
             except Exception as fallback_error:
-                logger.error(f"Even fallback embeddings failed: {fallback_error}")
-                raise RuntimeError("Could not initialize any embedding model. Please check your OpenAI API configuration.")
+                logger.error(f"Failed to initialize fallback embeddings: {fallback_error}")
+                
+                # Final fallback to FakeEmbeddings
+                try:
+                    from langchain_community.embeddings import FakeEmbeddings
+                    self.langchain_embeddings = FakeEmbeddings(size=384)  # all-MiniLM-L6-v2 embedding dimension
+                    logger.warning("Using FakeEmbeddings as final fallback - this will severely affect performance")
+                except Exception as final_error:
+                    logger.error(f"Even final fallback embeddings failed: {final_error}")
+                    raise RuntimeError("Could not initialize any embedding model. Please check your configuration.")
 
 class DocumentProcessor:
     def __init__(self):
@@ -1022,12 +1055,23 @@ async def test_gpt5_debug():
 async def get_model_config():
     """Get current model configuration"""
     try:
-        model = GPT5Client(os.getenv("AIMLAPI_KEY"))
+        llm_model = GPT5Client(os.getenv("AIMLAPI_KEY"))
+        embedding_manager = EmbeddingManager()
+        
         return {
             "status": "success",
-            "primary_model": model.primary_model,
-            "fallback_models": model.fallback_models,
-            "description": "System will try primary model once, then fall back to fallback models in sequence"
+            "llm_models": {
+                "primary_model": llm_model.primary_model,
+                "fallback_models": llm_model.fallback_models,
+                "description": "LLM system will try primary model once, then fall back to fallback models in sequence"
+            },
+            "embedding_models": {
+                "primary_model": embedding_manager.primary_model_name,
+                "fallback_model": embedding_manager.fallback_model_name,
+                "current_model": embedding_manager.langchain_embeddings.model_name if hasattr(embedding_manager.langchain_embeddings, 'model_name') else "Unknown Model",
+                "description": "Embedding system uses insurance-specific model first, then falls back to all-MiniLM-L6-v2"
+            },
+            "config": CONFIG.get_model_config()
         }
     except Exception as e:
         return {
@@ -1037,6 +1081,49 @@ async def get_model_config():
 
 
 
+
+@app.get("/test-embedding-model")
+async def test_embedding_model():
+    """Test the current embedding model with sample insurance text"""
+    try:
+        embedding_manager = EmbeddingManager()
+        
+        # Test with insurance-specific text
+        test_texts = [
+            "insurance policy coverage for medical expenses",
+            "claim settlement process for health insurance",
+            "waiting period for pre-existing conditions",
+            "room rent sub-limit in health insurance policy"
+        ]
+        
+        # Test document embedding
+        doc_embeddings = embedding_manager.langchain_embeddings.embed_documents(test_texts)
+        
+        # Test query embedding
+        query_embedding = embedding_manager.langchain_embeddings.embed_query("health insurance claim")
+        
+        return {
+            "status": "success",
+            "model_info": {
+                "current_model": embedding_manager.langchain_embeddings.model_name if hasattr(embedding_manager.langchain_embeddings, 'model_name') else "Unknown Model",
+                "primary_model": embedding_manager.primary_model_name,
+                "fallback_model": embedding_manager.fallback_model_name
+            },
+            "test_results": {
+                "document_embeddings_count": len(doc_embeddings),
+                "document_embedding_dimension": len(doc_embeddings[0]) if doc_embeddings else 0,
+                "query_embedding_dimension": len(query_embedding) if query_embedding else 0,
+                "test_texts": test_texts
+            },
+            "performance": "Insurance-specific model should provide better semantic understanding for insurance documents"
+        }
+    except Exception as e:
+        logger.error(f"Embedding model test failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
 
 @app.get("/documents")
 async def list_documents():

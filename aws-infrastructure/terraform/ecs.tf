@@ -114,13 +114,13 @@ resource "aws_ecs_task_definition" "main" {
   cpu                      = var.ecs_cpu
   memory                   = var.ecs_memory
   execution_role_arn       = aws_iam_role.ecs_execution_role.arn
-  task_role_arn           = aws_iam_role.ecs_task_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {
       name  = "intelliclaim-backend"
       image = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${aws_ecr_repository.main.name}:latest"
-      
+
       portMappings = [
         {
           containerPort = 8000
@@ -196,10 +196,10 @@ resource "aws_ecs_task_definition" "main" {
       }
 
       healthCheck = {
-        command = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
-        interval = 30
-        timeout = 5
-        retries = 3
+        command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
         startPeriod = 60
       }
 
