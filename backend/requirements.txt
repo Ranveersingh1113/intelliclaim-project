@@ -29,20 +29,28 @@ psycopg2-binary>=2.9.9  # PostgreSQL sync driver (fallback)
 
 # Vector database - pgvector support
 pgvector>=0.2.4
+chromadb>=0.4.0  # ChromaDB for vector storage
 
-# Embedding models
-sentence-transformers==2.2.2
+# Embedding models (CPU-only, optimized for smaller image size)
+# Using CPU-only PyTorch to reduce image size from ~7GB to ~2GB
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.1.0+cpu
+transformers==4.40.0
+tokenizers==0.19.1
+safetensors==0.4.1
+huggingface_hub==0.19.4
+numpy==1.26.4
 
 # Production dependencies
 gunicorn==21.2.0
-prometheus-client>=0.19.0  # Metrics
-structlog>=23.2.0  # Structured logging
+prometheus-client==0.19.0  # Metrics
+structlog==23.2.0  # Structured logging
 
 # Security and monitoring
-cryptography>=41.0.0
-python-multipart>=0.0.6  # File upload support
+cryptography==41.0.7
+python-multipart>=0.0.7  # File upload support (required by FastAPI)
 
-# Development and testing (optional)
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-httpx>=0.25.0  # Async HTTP client for testing
+# Development and testing (optional, can be removed in production)
+pytest==7.4.0
+pytest-asyncio==0.21.1
+httpx==0.25.2  # Async HTTP client for testing

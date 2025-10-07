@@ -1,38 +1,62 @@
 # Multi-stage Dockerfile for IntelliClaim Backend
-FROM python:3.11-slim as base
+# Optimized for smaller image size (~2GB instead of ~7GB)
+
+# Build stage - for compiling dependencies
+FROM python:3.11-slim as builder
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy and install Python dependencies
+COPY requirements.txt .
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --default-timeout=1000 --no-cache-dir -r requirements.txt
+
+# Runtime stage - smaller final image
+FROM python:3.11-slim as runtime
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    TRANSFORMERS_CACHE=/app/.cache/huggingface \
+    HF_HOME=/app/.cache/huggingface \
+    PATH="/opt/venv/bin:$PATH"
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Create app directory and non-root user
 WORKDIR /app
-
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Create necessary directories
-RUN mkdir -p /app/uploads /app/chroma_db /app/faiss_cache
+RUN mkdir -p /app/uploads /app/chroma_db /app/faiss_cache /app/.cache/huggingface && \
+    chown -R appuser:appuser /app
 
-# Production stage
-FROM base as production
+# Copy application code (after creating directories to optimize layer caching)
+COPY --chown=appuser:appuser . .
 
-# Add non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-RUN chown -R appuser:appuser /app
+# Switch to non-root user
 USER appuser
 
 # Expose port

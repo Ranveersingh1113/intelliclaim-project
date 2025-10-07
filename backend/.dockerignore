@@ -1,69 +1,72 @@
-# Docker ignore file for IntelliClaim Backend
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
+dist/
+build/
 *.egg
 
-# Virtual environments
+# Virtual Environment
 venv/
 env/
 ENV/
+.venv
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
-logs/
-
-# Environment files
-.env
-.env.local
-.env.production
-
-# Local data directories (will be replaced by AWS services)
-uploads/
-chroma_db/
-faiss_cache/
-
 # Git
 .git/
 .gitignore
+.gitattributes
 
 # Documentation
-README.md
 *.md
+EMBEDDING_INTEGRATION.md
 
-# Test files
+# Testing
 test_*.py
-*_test.py
 tests/
+.pytest_cache/
+htmlcov/
+.coverage
+.tox/
+
+# Development scripts
+scripts/migrate_*.py
+setup_storage.py
+
+# Build artifacts
+package.zip
+build.sh
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Large cache directories (will be recreated at runtime)
+chroma_db/*
+faiss_cache/*
+uploads/*
+.cache/
+
+# Environment files (use secrets management instead)
+.env
+env.example
+aws_config.py
 
 # Temporary files
+*.log
 *.tmp
-*.temp
+*.bak
