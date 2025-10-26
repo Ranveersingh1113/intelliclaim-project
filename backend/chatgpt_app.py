@@ -28,6 +28,7 @@ from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from transformers import AutoTokenizer, AutoModel
 import torch
+from sentence_transformers import SentenceTransformer
 from langchain_community.vectorstores import Chroma
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel
@@ -137,13 +138,10 @@ class InsuranceEmbeddingWrapper:
         self.device = "cpu"  # Force CPU usage to avoid CUDA dependencies
         
         try:
-            # Load tokenizer and model (using lightweight all-MiniLM-L6-v2: 80MB vs 420MB)
-            # This model uses ~200MB RAM vs ~2GB for industry-bert-insurance
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self.model = AutoModel.from_pretrained(model_name)
-            self.model.to(self.device)
-            self.model.eval()
-            logger.info(f"Initialized lightweight model {model_name} on {self.device}")
+            # Use sentence-transformers library which is more stable
+            logger.info(f"Initializing sentence-transformers model: {model_name}")
+            self.model = SentenceTransformer(model_name)
+            logger.info(f"Successfully initialized {model_name} on {self.device}")
         except Exception as e:
             logger.error(f"Failed to initialize model {model_name}: {e}")
             raise
@@ -151,43 +149,10 @@ class InsuranceEmbeddingWrapper:
     def embed_documents(self, texts: list) -> list:
         """Embed a list of documents in batches to reduce memory usage"""
         try:
-            import gc
-            
-            # Process in small batches to control memory (critical for 4GB RAM limit)
-            batch_size = 3  # Process 3 chunks at a time instead of all 50+
-            all_embeddings = []
-            
-            logger.info(f"Embedding {len(texts)} documents in batches of {batch_size}")
-            
-            for i in range(0, len(texts), batch_size):
-                batch = texts[i:i+batch_size]
-                
-                # Tokenize batch
-                inputs = self.tokenizer(
-                    batch, 
-                    padding=True, 
-                    truncation=True, 
-                    return_tensors="pt",
-                    max_length=512
-                )
-                
-                # Move to CPU
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-                
-                # Get embeddings
-                with torch.no_grad():
-                    outputs = self.model(**inputs)
-                    embeddings = outputs.last_hidden_state.mean(dim=1)
-                
-                all_embeddings.extend(embeddings.cpu().numpy().tolist())
-                
-                # Clean up after each batch to free memory
-                del inputs, outputs, embeddings
-                gc.collect()
-                
-                logger.debug(f"Processed batch {i//batch_size + 1}/{(len(texts)-1)//batch_size + 1}")
-            
-            return all_embeddings
+            # sentence-transformers handles batching internally
+            logger.debug(f"Embedding {len(texts)} documents")
+            embeddings = self.model.encode(texts, convert_to_numpy=True)
+            return embeddings.tolist()
         except Exception as e:
             logger.error(f"Error embedding documents with {self.model_name}: {e}")
             raise
@@ -195,25 +160,9 @@ class InsuranceEmbeddingWrapper:
     def embed_query(self, text: str) -> list:
         """Embed a single query"""
         try:
-            # Tokenize text
-            inputs = self.tokenizer(
-                text, 
-                padding=True, 
-                truncation=True, 
-                return_tensors="pt",
-                max_length=512
-            )
-            
-            # Move to CPU
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            
-            # Get embeddings
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-                # Use mean pooling of last hidden state
-                embedding = outputs.last_hidden_state.mean(dim=1)
-            
-            return embedding.cpu().numpy()[0].tolist()
+            # sentence-transformers handles this efficiently
+            embedding = self.model.encode(text, convert_to_numpy=True)
+            return embedding.tolist()
         except Exception as e:
             logger.error(f"Error embedding query with {self.model_name}: {e}")
             raise
@@ -869,10 +818,22 @@ class IntelliClaimRAG:
     def __init__(self):
         self.llm = GeminiClient()
         self.embedding_manager = EmbeddingManager()
-        # Use S3 for persistent vector storage in AWS
-        s3_path = os.getenv("S3_BUCKET_NAME", "intelliclaim-dev-documents")
+        # Determine storage based on environment
+        # For AWS deployment, use S3 path
+        # For local development, use local directory
+        environment = os.getenv("ENVIRONMENT", "development")
+        is_aws_deployment = os.getenv("RENDER") == "true" or os.getenv("AWS_REGION") is not None
+        
+        if is_aws_deployment:
+            # AWS deployment - use S3 for persistent vector storage
+            s3_path = os.getenv("S3_BUCKET_NAME", "intelliclaim-dev-documents")
+            persist_path = f"s3://{s3_path}/chroma_db"
+        else:
+            # Local development - use local directory
+            persist_path = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
+        
         self.vector_store = Chroma(
-            persist_directory=f"s3://{s3_path}/chroma_db",
+            persist_directory=persist_path,
             embedding_function=self.embedding_manager.langchain_embeddings
         )
         self.doc_processor = DocumentProcessor()

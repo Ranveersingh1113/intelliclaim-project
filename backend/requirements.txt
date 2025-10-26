@@ -30,10 +30,10 @@ psycopg2-binary>=2.9.9  # PostgreSQL sync driver (fallback)
 pgvector>=0.2.4
 chromadb>=0.4.0  # ChromaDB for vector storage
 
-# Embedding models (CPU-only, optimized for smaller image size)
-# Using CPU-only PyTorch to reduce image size from ~7GB to ~2GB
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.1.0+cpu
+# Embedding models (GPU-enabled)
+# Using GPU-enabled PyTorch for better performance
+torch>=2.0.0
+torchvision>=0.15.0
 transformers==4.40.0
 tokenizers==0.19.1
 safetensors==0.4.1
