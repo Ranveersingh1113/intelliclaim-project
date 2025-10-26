@@ -26,6 +26,14 @@ COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel && \
     pip install --default-timeout=1000 --no-cache-dir -r requirements.txt
 
+# Pre-download embedding model to eliminate runtime download spike
+# This reduces RAM usage by ~500MB during first upload
+RUN python -c "from transformers import AutoTokenizer, AutoModel; \
+    print('Pre-downloading embedding model...'); \
+    AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2'); \
+    AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L6-v2'); \
+    print('Model cached successfully')"
+
 # Runtime stage - smaller final image
 FROM python:3.11-slim as runtime
 
@@ -44,6 +52,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
+
+# Copy pre-downloaded model cache from builder
+COPY --from=builder /root/.cache/huggingface /app/.cache/huggingface
 
 # Create app directory and non-root user
 WORKDIR /app

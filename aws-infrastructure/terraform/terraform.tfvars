@@ -17,8 +17,8 @@ db_max_allocated_storage = 100
 db_password = "IntelliClaim2024!"  # Change this in production!
 
 # ECS Configuration
-ecs_cpu = 512
-ecs_memory = 1024
+ecs_cpu = 1024  # Increased to 1024 (1 vCPU) for 4GB RAM compatibility
+ecs_memory = 4096  # Increased to 4GB for document processing (embedding generation needs memory)
 ecs_desired_count = 1
 
 # Domain Configuration (optional)
@@ -29,10 +29,10 @@ certificate_arn = ""  # Not needed without custom domain
 allowed_cidr_blocks = ["0.0.0.0/0"]
 
 # Monitoring Configuration
-enable_detailed_monitoring = true
+enable_detailed_monitoring = false
 
 # Cost Optimization
-enable_spot_instances = false  # Set to true for cost savings
+enable_spot_instances = true  # Set to true for cost savings
 
 # Backup Configuration
 backup_retention_period = 7

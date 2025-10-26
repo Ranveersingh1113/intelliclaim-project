@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Backend Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-box {
+            border: 2px solid #ccc;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background-color: #d4edda; border-color: #28a745; }
+        .error { background-color: #f8d7da; border-color: #dc3545; }
+        .pending { background-color: #fff3cd; border-color: #ffc107; }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Backend Connection Test</h1>
+    <p>This page tests if your browser can reach the backend API.</p>
+    
+    <div id="results"></div>
+    
+    <button onclick="runTests()">Run Tests</button>
+    
+    <script>
+        const BACKEND_URL = 'http://intelliclaim-dev-alb-1813831411.us-east-1.elb.amazonaws.com';
+        
+        function addResult(title, status, message, details = '') {
+            const resultsDiv = document.getElementById('results');
+            const testBox = document.createElement('div');
+            testBox.className = `test-box ${status}`;
+            testBox.innerHTML = `
+                <h3>${title}</h3>
+                <p><strong>${message}</strong></p>
+                ${details ? `<pre>${details}</pre>` : ''}
+            `;
+            resultsDiv.appendChild(testBox);
+        }
+        
+        async function runTests() {
+            document.getElementById('results').innerHTML = '';
+            
+            // Test 1: Health check
+            addResult('Test 1: Health Check', 'pending', 'Testing...');
+            try {
+                const response = await fetch(`${BACKEND_URL}/health`);
+                const data = await response.json();
+                addResult('Test 1: Health Check', 'success', 
+                    `✅ Backend is reachable!`, 
+                    JSON.stringify(data, null, 2));
+            } catch (err) {
+                addResult('Test 1: Health Check', 'error', 
+                    `❌ Cannot reach backend`, 
+                    `Error: ${err.message}\n\nThis usually means:\n- Your network/firewall is blocking the request\n- The backend ALB is not accessible from your location\n- CORS is preventing the request`);
+                return; // Stop if health check fails
+            }
+            
+            // Test 2: CORS preflight
+            addResult('Test 2: CORS Preflight', 'pending', 'Testing...');
+            try {
+                const response = await fetch(`${BACKEND_URL}/upload-document`, {
+                    method: 'OPTIONS',
+                    headers: {
+                        'Origin': window.location.origin,
+                        'Access-Control-Request-Method': 'POST'
+                    }
+                });
+                const headers = {};
+                response.headers.forEach((value, key) => {
+                    if (key.includes('access-control')) {
+                        headers[key] = value;
+                    }
+                });
+                addResult('Test 2: CORS Preflight', 'success', 
+                    `✅ CORS is configured correctly`, 
+                    JSON.stringify(headers, null, 2));
+            } catch (err) {
+                addResult('Test 2: CORS Preflight', 'error', 
+                    `❌ CORS preflight failed`, 
+                    `Error: ${err.message}`);
+            }
+            
+            // Test 3: Upload endpoint accessibility
+            addResult('Test 3: Upload Endpoint', 'pending', 'Testing...');
+            try {
+                const formData = new FormData();
+                const blob = new Blob(['test'], { type: 'application/pdf' });
+                formData.append('file', blob, 'test.pdf');
+                
+                const response = await fetch(`${BACKEND_URL}/upload-document`, {
+                    method: 'POST',
+                    body: formData,
+                    mode: 'cors',
+                    credentials: 'include'
+                });
+                
+                const data = await response.json();
+                addResult('Test 3: Upload Endpoint', 'success', 
+                    `✅ Upload endpoint is accessible (Status: ${response.status})`, 
+                    JSON.stringify(data, null, 2));
+            } catch (err) {
+                addResult('Test 3: Upload Endpoint', 'error', 
+                    `❌ Upload endpoint failed`, 
+                    `Error: ${err.message}\n\nThis is the same error you're seeing in the main app.`);
+            }
+        }
+        
+        // Auto-run tests on page load
+        window.onload = () => {
+            setTimeout(runTests, 500);
+        };
+    </script>
+</body>
+</html>
+

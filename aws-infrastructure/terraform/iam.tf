@@ -25,6 +25,28 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# ECS Execution Role Policy for Secrets Manager
+resource "aws_iam_role_policy" "ecs_execution_role_secrets" {
+  name = "${local.name}-ecs-execution-secrets-policy"
+  role = aws_iam_role.ecs_execution_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = [
+          aws_secretsmanager_secret.main.arn,
+          aws_secretsmanager_secret.db_credentials.arn
+        ]
+      }
+    ]
+  })
+}
+
 # ECS Task Role
 resource "aws_iam_role" "ecs_task_role" {
   name = "${local.name}-ecs-task-role"
@@ -63,9 +85,7 @@ resource "aws_iam_role_policy" "ecs_task_policy" {
         ]
         Resource = [
           aws_s3_bucket.main.arn,
-          "${aws_s3_bucket.main.arn}/*",
-          aws_s3_bucket.logs.arn,
-          "${aws_s3_bucket.logs.arn}/*"
+          "${aws_s3_bucket.main.arn}/*"
         ]
       },
       {
@@ -101,159 +121,11 @@ resource "aws_iam_role_policy" "ecs_task_policy" {
   })
 }
 
-# CodeBuild Service Role
-resource "aws_iam_role" "codebuild_role" {
-  name = "${local.name}-codebuild-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "codebuild.amazonaws.com"
-        }
-      }
-    ]
-  })
-
-  tags = local.common_tags
-}
-
-# CodeBuild Policy
-resource "aws_iam_role_policy" "codebuild_policy" {
-  name = "${local.name}-codebuild-policy"
-  role = aws_iam_role.codebuild_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ]
-        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/${local.name}-*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:ListBucket"
-        ]
-        Resource = [
-          aws_s3_bucket.logs.arn,
-          "${aws_s3_bucket.logs.arn}/*"
-        ]
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:PutImage",
-          "ecr:InitiateLayerUpload",
-          "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload"
-        ]
-        Resource = [
-          aws_ecr_repository.main.arn,
-          aws_ecr_repository.frontend.arn
-        ]
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "ecs:UpdateService",
-          "ecs:DescribeServices",
-          "ecs:DescribeTaskDefinition",
-          "ecs:RegisterTaskDefinition"
-        ]
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "iam:PassRole"
-        ]
-        Resource = [
-          aws_iam_role.ecs_execution_role.arn,
-          aws_iam_role.ecs_task_role.arn
-        ]
-      }
-    ]
-  })
-}
-
-# CodePipeline Service Role
-resource "aws_iam_role" "codepipeline_role" {
-  name = "${local.name}-codepipeline-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "codepipeline.amazonaws.com"
-        }
-      }
-    ]
-  })
-
-  tags = local.common_tags
-}
-
-# CodePipeline Policy
-resource "aws_iam_role_policy" "codepipeline_policy" {
-  name = "${local.name}-codepipeline-policy"
-  role = aws_iam_role.codepipeline_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:GetBucketVersioning",
-          "s3:GetObject",
-          "s3:GetObjectVersion",
-          "s3:PutObject",
-          "s3:PutObjectAcl"
-        ]
-        Resource = [
-          aws_s3_bucket.logs.arn,
-          "${aws_s3_bucket.logs.arn}/*"
-        ]
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "codebuild:BatchGetBuilds",
-          "codebuild:StartBuild"
-        ]
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "codestar-connections:UseConnection"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-}
+# CodeBuild and CodePipeline roles removed for cost optimization
 
 # Secrets Manager Secret for Application Secrets
 resource "aws_secretsmanager_secret" "main" {
-  name                    = "${local.name}/application/secrets"
+  name                    = "${local.name}/app/secrets"
   description             = "Application secrets for IntelliClaim"
   recovery_window_in_days = 7
 
@@ -265,6 +137,7 @@ resource "aws_secretsmanager_secret_version" "main" {
   secret_string = jsonencode({
     AIMLAPI_KEY    = "your-aimlapi-key-here"
     OPENAI_API_KEY = "your-openai-key-here"
+    GOOGLE_API_KEY = "AIzaSyDzW1qOYm5DSy2xWfn8qOUzkMR_ehxfqyQ"
   })
 }
 
@@ -276,10 +149,4 @@ resource "aws_cloudwatch_log_group" "main" {
   tags = local.common_tags
 }
 
-# CloudWatch Log Group for CodeBuild
-resource "aws_cloudwatch_log_group" "codebuild" {
-  name              = "/aws/codebuild/${local.name}"
-  retention_in_days = 30
-
-  tags = local.common_tags
-}
+# CodeBuild log group removed for cost optimization

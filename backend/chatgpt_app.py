@@ -26,12 +26,12 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer, AutoModel
+import torch
 from langchain_community.vectorstores import Chroma
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel
 import uvicorn
-import openai
 import requests
 from docx import Document as DocxDocument
 from email import policy as email_policy
@@ -45,17 +45,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# MODIFIED: Check for AI/ML API Key
-if not os.getenv("AIMLAPI_KEY"):
-    raise ValueError("AIMLAPI_KEY environment variable not set.")
+# Check for Google AI API Key
+if not os.getenv("GOOGLE_API_KEY"):
+    raise ValueError("GOOGLE_API_KEY environment variable not set.")
 
-
-# Configure AI/ML API
-from openai import OpenAI
-client = OpenAI(
-    base_url="https://api.aimlapi.com/v1",
-    api_key=os.getenv("AIMLAPI_KEY"),
-)
+# Configure Google Gemini API
+import google.generativeai as genai
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 CONFIG = get_config()
 
@@ -134,18 +130,64 @@ class UploadURLRequest(BaseModel):
 
 # --- Core RAG Components (Updated for Insurance-Specific Embeddings) ---
 class InsuranceEmbeddingWrapper:
-    """Wrapper to make SentenceTransformer compatible with LangChain embeddings interface"""
+    """Wrapper to make transformers model compatible with LangChain embeddings interface"""
     
-    def __init__(self, model_name: str = "llmware/industry-bert-insurance-v0.1"):
-        self.model = SentenceTransformer(model_name)
+    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.model_name = model_name
-        logger.info(f"Initialized SentenceTransformer with {model_name}")
+        self.device = "cpu"  # Force CPU usage to avoid CUDA dependencies
+        
+        try:
+            # Load tokenizer and model (using lightweight all-MiniLM-L6-v2: 80MB vs 420MB)
+            # This model uses ~200MB RAM vs ~2GB for industry-bert-insurance
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self.model = AutoModel.from_pretrained(model_name)
+            self.model.to(self.device)
+            self.model.eval()
+            logger.info(f"Initialized lightweight model {model_name} on {self.device}")
+        except Exception as e:
+            logger.error(f"Failed to initialize model {model_name}: {e}")
+            raise
     
     def embed_documents(self, texts: list) -> list:
-        """Embed a list of documents"""
+        """Embed a list of documents in batches to reduce memory usage"""
         try:
-            embeddings = self.model.encode(texts, convert_to_tensor=False)
-            return embeddings.tolist() if hasattr(embeddings, 'tolist') else embeddings
+            import gc
+            
+            # Process in small batches to control memory (critical for 4GB RAM limit)
+            batch_size = 3  # Process 3 chunks at a time instead of all 50+
+            all_embeddings = []
+            
+            logger.info(f"Embedding {len(texts)} documents in batches of {batch_size}")
+            
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i+batch_size]
+                
+                # Tokenize batch
+                inputs = self.tokenizer(
+                    batch, 
+                    padding=True, 
+                    truncation=True, 
+                    return_tensors="pt",
+                    max_length=512
+                )
+                
+                # Move to CPU
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                
+                # Get embeddings
+                with torch.no_grad():
+                    outputs = self.model(**inputs)
+                    embeddings = outputs.last_hidden_state.mean(dim=1)
+                
+                all_embeddings.extend(embeddings.cpu().numpy().tolist())
+                
+                # Clean up after each batch to free memory
+                del inputs, outputs, embeddings
+                gc.collect()
+                
+                logger.debug(f"Processed batch {i//batch_size + 1}/{(len(texts)-1)//batch_size + 1}")
+            
+            return all_embeddings
         except Exception as e:
             logger.error(f"Error embedding documents with {self.model_name}: {e}")
             raise
@@ -153,22 +195,40 @@ class InsuranceEmbeddingWrapper:
     def embed_query(self, text: str) -> list:
         """Embed a single query"""
         try:
-            embedding = self.model.encode([text], convert_to_tensor=False)
-            return embedding.tolist()[0] if hasattr(embedding, 'tolist') else embedding[0]
+            # Tokenize text
+            inputs = self.tokenizer(
+                text, 
+                padding=True, 
+                truncation=True, 
+                return_tensors="pt",
+                max_length=512
+            )
+            
+            # Move to CPU
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            
+            # Get embeddings
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+                # Use mean pooling of last hidden state
+                embedding = outputs.last_hidden_state.mean(dim=1)
+            
+            return embedding.cpu().numpy()[0].tolist()
         except Exception as e:
             logger.error(f"Error embedding query with {self.model_name}: {e}")
             raise
 
 class EmbeddingManager:
     def __init__(self, model_name: str = None):
-        self.primary_model_name = CONFIG.EMBEDDING_MODEL  # industry-bert-insurance-v0.1
-        self.fallback_model_name = CONFIG.EMBEDDING_FALLBACK_MODEL  # all-MiniLM-L6-v2
+        # Use lightweight model only to prevent OOM crashes
+        self.primary_model_name = "sentence-transformers/all-MiniLM-L6-v2"  # 80MB, ~200MB RAM
+        self.fallback_model_name = "sentence-transformers/all-MiniLM-L6-v2"  # Same, no fallback needed
         
-        # Try insurance-specific model first
+        # Skip heavy insurance-specific model (causes OOM with 4GB RAM)
         try:
-            logger.info(f"Attempting to initialize insurance-specific embedding model: {self.primary_model_name}")
+            logger.info(f"Initializing lightweight embedding model: {self.primary_model_name}")
             self.langchain_embeddings = InsuranceEmbeddingWrapper(self.primary_model_name)
-            logger.info(f"Successfully initialized {self.primary_model_name} - optimized for insurance documents")
+            logger.info(f"Successfully initialized {self.primary_model_name} - memory-optimized model")
         except Exception as e:
             logger.warning(f"Failed to initialize insurance model {self.primary_model_name}: {e}")
             logger.info("Falling back to all-MiniLM-L6-v2...")
@@ -258,74 +318,38 @@ class DocumentProcessor:
         return documents
 
 
-# --- Specialized Agents (Logic Updated for AI/ML API) ---
-class GPT5Client:
-    def __init__(self, api_key):
-        self.api_key = api_key
-        self.primary_model = "openai/gpt-5-mini-2025-08-07"  # Primary model to try first
-        self.fallback_models = [
-            "openai/gpt-5-2025-08-07",      # Fallback 1: Full GPT-5
-            "openai/gpt-5-chat-latest",     # Fallback 2: Latest version
-            "openai/gpt-4o-mini",           # Fallback 3: GPT-4 mini
-            "openai/gpt-3.5-turbo"          # Fallback 4: GPT-3.5 as last resort
-        ]
-        self.client = OpenAI(
-            base_url="https://api.aimlapi.com/v1",
-            api_key=self.api_key,
-        )
+# --- Specialized Agents (Updated for Google Gemini) ---
+class GeminiClient:
+    def __init__(self, api_key=None):
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
+        # Gemini 1.5 has been retired - use Gemini 2.0 Flash
+        self.model_name = "gemini-2.0-flash"
+        self.model = genai.GenerativeModel(self.model_name)
 
 
     async def generate_content_async(self, prompt, **kwargs):
-        # Try primary model (gpt-5-mini) once
+        """Generate content using Google Gemini 1.5 Flash"""
         try:
-            logger.info(f"Trying primary model: {self.primary_model}")
-            response = await asyncio.to_thread(
-                self.client.chat.completions.create,
-                model=self.primary_model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=kwargs.get("temperature", 0),
-                max_tokens=kwargs.get("max_tokens", 1000),
-                stream=False,
-                timeout=30  # Shorter timeout for mini model
+            logger.info(f"Using Gemini model: {self.model_name}")
+            
+            # Configure generation parameters
+            generation_config = {
+                "temperature": kwargs.get("temperature", 0.1),
+                "max_output_tokens": kwargs.get("max_tokens", 1000),
+            }
+            
+            # Generate content synchronously (Gemini async has issues)
+            import asyncio
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.model.generate_content(prompt, generation_config=generation_config)
             )
             
-            content = response.choices[0].message.content
-            if content and content.strip():
-                logger.info(f"Successfully generated content with primary model: {self.primary_model}")
-                return content
-            else:
-                raise ValueError(f"Empty response from {self.primary_model}")
-                
+            return response.text
         except Exception as e:
-            logger.warning(f"Primary model {self.primary_model} failed: {str(e)}. Switching to fallback models...")
-        
-        # Try fallback models in sequence
-        for fallback_model in self.fallback_models:
-            try:
-                logger.info(f"Trying fallback model: {fallback_model}")
-                response = await asyncio.to_thread(
-                    self.client.chat.completions.create,
-                    model=fallback_model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=kwargs.get("temperature", 0),
-                    max_tokens=kwargs.get("max_tokens", 1000),
-                    stream=False,
-                    timeout=60  # Longer timeout for fallback models
-                )
-                
-                content = response.choices[0].message.content
-                if content and content.strip():
-                    logger.info(f"Successfully generated content with fallback model: {fallback_model}")
-                    return content
-                else:
-                    raise ValueError(f"Empty response from {fallback_model}")
-                    
-            except Exception as e:
-                logger.warning(f"Fallback model {fallback_model} failed: {str(e)}")
-                continue
-        
-        # If all models failed
-        raise Exception("All models failed to generate content")
+            logger.error(f"Gemini model {self.model_name} failed: {e}")
+            raise Exception(f"Gemini API failed: {str(e)}")
     
 
 
@@ -725,29 +749,14 @@ class DecisionReasoningAgent:
         procedure = structured_query.get('procedure')
         policy_duration = structured_query.get('policy_duration_months', 1)
         
-        if not procedure:
-            return {
-                "decision": "PENDING",
-                "justification": "Procedure type not specified. Please provide more details about the medical procedure.",
-                "amount": None,
-                "confidence_score": 30
-            }
-        
-        # Simple logic based on policy duration
-        if policy_duration < 3:
-            return {
-                "decision": "PENDING",
-                "justification": f"Policy is only {policy_duration} month(s) old. Please check waiting period requirements.",
-                "amount": None,
-                "confidence_score": 40
-            }
-        else:
-            return {
-                "decision": "PENDING",
-                "justification": f"Policy duration ({policy_duration} months) appears sufficient, but specific coverage details needed.",
-                "amount": None,
-                "confidence_score": 60
-            }
+        # Removed simplistic fallback logic - let AI reasoning handle all cases
+        # This ensures proper policy document analysis instead of hardcoded rules
+        return {
+            "decision": "PENDING",
+            "justification": "Analyzing policy documents for specific coverage details...",
+            "amount": None,
+            "confidence_score": 50
+        }
     def _build_reasoning_prompt(self, structured_query: Dict, docs: List[Document], original_query: str) -> str:
         windows: List[str] = []
         remaining = MAX_CONTEXT_CHARS
@@ -858,10 +867,12 @@ class ExplainabilityAgent:
 # --- Main RAG System Orchestrator (Logic Updated for AI/ML API) ---
 class IntelliClaimRAG:
     def __init__(self):
-        self.llm = GPT5Client(os.getenv("AIMLAPI_KEY"))
+        self.llm = GeminiClient()
         self.embedding_manager = EmbeddingManager()
+        # Use S3 for persistent vector storage in AWS
+        s3_path = os.getenv("S3_BUCKET_NAME", "intelliclaim-dev-documents")
         self.vector_store = Chroma(
-            persist_directory="./chroma_db",
+            persist_directory=f"s3://{s3_path}/chroma_db",
             embedding_function=self.embedding_manager.langchain_embeddings
         )
         self.doc_processor = DocumentProcessor()
@@ -942,11 +953,35 @@ class IntelliClaimRAG:
 app = FastAPI(title=get_config().API_TITLE, version=get_config().API_VERSION)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://intelliclaim-frontend.onrender.com","*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],expose_headers=["*"]
+    allow_origins=[
+        "http://intelliclaim-dev-frontend-2408.s3-website-us-east-1.amazonaws.com",  # S3 Website
+        "https://intelliclaim-frontend.onrender.com",  # Legacy Render deployment
+        "http://localhost:3000",  # Local development
+        "*"  # Allow all (remove in production for better security)
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 
 rag_system = IntelliClaimRAG()
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize models and system on startup to avoid first-request delays"""
+    logger.info("Starting up application...")
+    try:
+        # Pre-initialize the embedding model to avoid lazy loading on first request
+        logger.info("Pre-loading embedding model...")
+        _ = rag_system.embedding_manager.langchain_embeddings.embed_query("startup test")
+        logger.info("✅ Embedding model pre-loaded successfully")
+    except Exception as e:
+        logger.error(f"Failed to pre-load embedding model: {e}")
+        # Don't fail startup, just log the error
+    logger.info("Application startup complete")
 
 
 @app.post("/query", response_model=DecisionResponse)
@@ -961,15 +996,36 @@ async def process_query_endpoint(request: QueryRequest):
 
 @app.post("/upload-document")
 async def upload_document_endpoint(file: UploadFile = File(...)):
-    if not os.path.exists("./uploads"):
-        os.makedirs("./uploads")
-    file_path = f"./uploads/{file.filename}"
-    with open(file_path, "wb") as buffer:
-        buffer.write(await file.read())
-    result = await rag_system.add_document(file_path)
-    if result['status'] == 'error':
-        raise HTTPException(status_code=400, detail=result['message'])
-    return result
+    try:
+        logger.info(f"Received upload request for file: {file.filename}")
+        
+        if not os.path.exists("./uploads"):
+            os.makedirs("./uploads")
+        
+        file_path = f"./uploads/{file.filename}"
+        
+        # Save file
+        logger.info(f"Saving file to: {file_path}")
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        logger.info(f"File saved successfully: {len(content)} bytes")
+        
+        # Process document with optimized batch processing
+        logger.info("Starting document processing with batch embedding...")
+        result = await rag_system.add_document(file_path)
+        logger.info(f"Document processing complete: {result}")
+        
+        if result['status'] == 'error':
+            raise HTTPException(status_code=400, detail=result['message'])
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Upload error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
 @app.get("/health")

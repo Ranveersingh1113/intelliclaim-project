@@ -42,17 +42,24 @@ const IntelliClaimDemo = () => {
 
     for (const file of files) {
       try {
+        console.log('Uploading to:', UPLOAD_ENDPOINT);
+        console.log('File:', file.name);
+        
         const formData = new FormData();
         formData.append('file', file);
 
         const response = await fetch(UPLOAD_ENDPOINT, {
           method: 'POST',
           body: formData,
+          mode: 'cors',
         });
 
+        console.log('Response status:', response.status);
+        console.log('Response ok:', response.ok);
+
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || `Upload failed for ${file.name}`);
+          const errorText = await response.text();
+          throw new Error(`Upload failed with status ${response.status}: ${errorText.substring(0, 100)}`);
         }
 
         const result = await response.json();
@@ -60,13 +67,23 @@ const IntelliClaimDemo = () => {
         setUploadedFiles(prev => [...prev, {
           name: file.name,
           status: 'success',
-          documentsAdded: result.documents_added,
+          documentsAdded: result.documents_added || 0,
           timestamp: new Date().toLocaleTimeString()
         }]);
 
+        // Create success message based on response
+        let message;
+        if (result.status === 'skipped' && result.reason === 'already_indexed') {
+          message = `${file.name} already indexed (skipped)`;
+        } else if (result.documents_added) {
+          message = `Successfully uploaded ${file.name} (${result.documents_added} chunks indexed)`;
+        } else {
+          message = `Successfully uploaded ${file.name}`;
+        }
+
         setUploadStatus({
           type: 'success',
-          message: `Successfully uploaded ${file.name} (${result.documents_added} documents added)`
+          message: message
         });
 
         // Refresh documents and stats
@@ -103,18 +120,26 @@ const IntelliClaimDemo = () => {
     setShowAgentFlow(true);
 
     try {
+      console.log('Processing query:', query);
+      console.log('API endpoint:', API_ENDPOINT);
+      
       const response = await fetch(API_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query }),
+        mode: 'cors',
       });
 
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`Query failed with status ${response.status}: ${errorText.substring(0, 100)}`);
       }
 
       const data = await response.json();
+      console.log('Query result:', data);
       setResult(data);
 
     } catch (err) {
@@ -145,7 +170,9 @@ const IntelliClaimDemo = () => {
 
   const fetchSystemStats = async () => {
     try {
-      const response = await fetch(STATS_ENDPOINT);
+      const response = await fetch(STATS_ENDPOINT, {
+        mode: 'cors',
+      });
       if (response.ok) {
         const stats = await response.json();
         setSystemStats(stats);
@@ -157,7 +184,9 @@ const IntelliClaimDemo = () => {
 
   const fetchDocuments = async () => {
     try {
-      const response = await fetch(DOCUMENTS_ENDPOINT);
+      const response = await fetch(DOCUMENTS_ENDPOINT, {
+        mode: 'cors',
+      });
       if (response.ok) {
         const data = await response.json();
         setDocuments(data.document_sources || []);
@@ -263,24 +292,31 @@ const IntelliClaimDemo = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-              <Input
-                id="file-upload"
-                type="file"
-                accept=".pdf,.docx,.eml"
-                multiple
-                onChange={handleFileUpload}
-                disabled={isUploading}
-                className="flex-1"
-              />
-              <Button 
-                variant="outline" 
-                disabled={isUploading}
-                className="px-6"
-                onClick={() => document.getElementById('file-upload')?.click()}
-              >
-                {isUploading ? <Clock className="w-4 h-4 animate-spin" /> : 'Choose Files'}
-              </Button>
+            <div className="space-y-2">
+              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                <Input
+                  id="file-upload"
+                  type="file"
+                  accept=".pdf,.docx,.eml"
+                  multiple
+                  onChange={handleFileUpload}
+                  disabled={isUploading}
+                  className="flex-1"
+                />
+                <Button 
+                  variant="outline" 
+                  disabled={isUploading}
+                  className="px-6"
+                  onClick={() => document.getElementById('file-upload')?.click()}
+                >
+                  {isUploading ? <Clock className="w-4 h-4 animate-spin" /> : 'Choose Files'}
+                </Button>
+              </div>
+              {isUploading && (
+                <p className="text-sm text-yellow-600 bg-yellow-50 p-2 rounded">
+                  ⏳ Processing documents... Large PDFs may take 2-3 minutes. Please wait.
+                </p>
+              )}
             </div>
             
             {uploadStatus && (

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Upload Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+        .success { background-color: #d4edda; color: #155724; display: block; }
+        .error { background-color: #f8d7da; color: #721c24; display: block; }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #progress {
+            display: none;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Simple Upload Test</h1>
+    <p>This tests upload without React complications.</p>
+    
+    <input type="file" id="fileInput" accept=".pdf">
+    <button onclick="uploadFile()">Upload</button>
+    
+    <div id="progress">Uploading... Please wait (may take 2-3 minutes)</div>
+    <div id="result" class="result"></div>
+    
+    <script>
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            const resultDiv = document.getElementById('result');
+            const progressDiv = document.getElementById('progress');
+            
+            if (!file) {
+                alert('Please select a file first');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            resultDiv.style.display = 'none';
+            progressDiv.style.display = 'block';
+            
+            try {
+                console.log('Starting upload...');
+                console.log('File:', file.name);
+                console.log('Size:', file.size);
+                
+                const response = await fetch('http://intelliclaim-dev-alb-1813831411.us-east-1.elb.amazonaws.com/upload-document', {
+                    method: 'POST',
+                    body: formData,
+                    mode: 'cors',
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                progressDiv.style.display = 'none';
+                resultDiv.className = 'result success';
+                resultDiv.innerHTML = `
+                    <strong>✅ Success!</strong><br>
+                    Status: ${data.status}<br>
+                    ${data.documents_added ? `Documents added: ${data.documents_added}<br>` : ''}
+                    ${data.reason ? `Reason: ${data.reason}<br>` : ''}
+                    File: ${data.file}
+                `;
+                
+            } catch (error) {
+                console.error('Upload error:', error);
+                progressDiv.style.display = 'none';
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `
+                    <strong>❌ Error:</strong><br>
+                    ${error.message}<br><br>
+                    <strong>Debug info:</strong><br>
+                    Check browser console (F12) for details
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
+

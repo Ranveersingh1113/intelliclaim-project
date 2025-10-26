@@ -49,10 +49,9 @@ resource "aws_subnet" "private" {
   })
 }
 
-# NAT Gateway
+# NAT Gateway (single for cost optimization)
 resource "aws_eip" "nat" {
-  count = var.availability_zones
-
+  count  = 1
   domain = "vpc"
 
   tags = merge(local.common_tags, {
@@ -63,8 +62,7 @@ resource "aws_eip" "nat" {
 }
 
 resource "aws_nat_gateway" "main" {
-  count = var.availability_zones
-
+  count         = 1
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
 
@@ -90,8 +88,7 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table" "private" {
-  count = var.availability_zones
-
+  count  = 1
   vpc_id = aws_vpc.main.id
 
   route {
@@ -116,7 +113,7 @@ resource "aws_route_table_association" "private" {
   count = var.availability_zones
 
   subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private[count.index].id
+  route_table_id = aws_route_table.private[0].id
 }
 
 # VPC Endpoints for AWS Services (cost optimization)

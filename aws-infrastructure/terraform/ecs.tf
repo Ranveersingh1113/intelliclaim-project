@@ -4,10 +4,7 @@
 resource "aws_ecs_cluster" "main" {
   name = "${local.name}-cluster"
 
-  setting {
-    name  = "containerInsights"
-    value = "enabled"
-  }
+  # Container insights disabled for cost optimization
 
   tags = local.common_tags
 }
@@ -34,6 +31,7 @@ resource "aws_lb" "main" {
   subnets            = aws_subnet.public[*].id
 
   enable_deletion_protection = var.environment == "prod"
+  idle_timeout               = 300  # 5 minutes for document processing
 
   tags = local.common_tags
 }
@@ -61,13 +59,11 @@ resource "aws_lb_target_group" "main" {
   tags = local.common_tags
 }
 
-# ALB Listener
+# ALB Listener - HTTP only for now (no custom domain)
 resource "aws_lb_listener" "main" {
   load_balancer_arn = aws_lb.main.arn
-  port              = "443"
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
-  certificate_arn   = var.certificate_arn != "" ? var.certificate_arn : aws_acm_certificate.main[0].arn
+  port              = "80"
+  protocol          = "HTTP"
 
   default_action {
     type             = "forward"
@@ -75,22 +71,7 @@ resource "aws_lb_listener" "main" {
   }
 }
 
-# HTTP to HTTPS redirect
-resource "aws_lb_listener" "redirect" {
-  load_balancer_arn = aws_lb.main.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type = "redirect"
-
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
-  }
-}
+# HTTP to HTTPS redirect removed for cost optimization
 
 # SSL Certificate (if domain is provided)
 resource "aws_acm_certificate" "main" {
@@ -143,7 +124,7 @@ resource "aws_ecs_task_definition" "main" {
         },
         {
           name  = "ECS_SERVICE_NAME"
-          value = aws_ecs_service.main.name
+          value = "${local.name}-service"
         },
         {
           name  = "S3_BUCKET_NAME"
@@ -151,11 +132,11 @@ resource "aws_ecs_task_definition" "main" {
         },
         {
           name  = "RDS_HOST"
-          value = aws_rds_cluster.main.endpoint
+          value = aws_db_instance.main.endpoint
         },
         {
           name  = "RDS_DATABASE"
-          value = aws_rds_cluster.main.database_name
+          value = aws_db_instance.main.db_name
         },
         {
           name  = "SECRETS_MANAGER_SECRET_NAME"
@@ -169,12 +150,8 @@ resource "aws_ecs_task_definition" "main" {
 
       secrets = [
         {
-          name      = "AIMLAPI_KEY"
-          valueFrom = "${aws_secretsmanager_secret.main.arn}:AIMLAPI_KEY::"
-        },
-        {
-          name      = "OPENAI_API_KEY"
-          valueFrom = "${aws_secretsmanager_secret.main.arn}:OPENAI_API_KEY::"
+          name      = "GOOGLE_API_KEY"
+          valueFrom = "${aws_secretsmanager_secret.main.arn}:GOOGLE_API_KEY::"
         },
         {
           name      = "RDS_USERNAME"
@@ -239,43 +216,4 @@ resource "aws_ecs_service" "main" {
   }
 }
 
-# Auto Scaling Target
-resource "aws_appautoscaling_target" "ecs_target" {
-  max_capacity       = 10
-  min_capacity       = 1
-  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.main.name}"
-  scalable_dimension = "ecs:service:DesiredCount"
-  service_namespace  = "ecs"
-}
-
-# Auto Scaling Policy - Scale Up
-resource "aws_appautoscaling_policy" "ecs_policy_up" {
-  name               = "${local.name}-scale-up"
-  policy_type        = "TargetTrackingScaling"
-  resource_id        = aws_appautoscaling_target.ecs_target.resource_id
-  scalable_dimension = aws_appautoscaling_target.ecs_target.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.ecs_target.service_namespace
-
-  target_tracking_scaling_policy_configuration {
-    predefined_metric_specification {
-      predefined_metric_type = "ECSServiceAverageCPUUtilization"
-    }
-    target_value = 70.0
-  }
-}
-
-# Auto Scaling Policy - Scale Down
-resource "aws_appautoscaling_policy" "ecs_policy_down" {
-  name               = "${local.name}-scale-down"
-  policy_type        = "TargetTrackingScaling"
-  resource_id        = aws_appautoscaling_target.ecs_target.resource_id
-  scalable_dimension = aws_appautoscaling_target.ecs_target.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.ecs_target.service_namespace
-
-  target_tracking_scaling_policy_configuration {
-    predefined_metric_specification {
-      predefined_metric_type = "ECSServiceAverageMemoryUtilization"
-    }
-    target_value = 80.0
-  }
-}
+# Auto Scaling removed for cost optimization - using fixed desired count

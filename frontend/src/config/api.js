@@ -3,15 +3,11 @@
 
 // Determine API base URL based on environment
 const getApiBaseUrl = () => {
-  // In production, use the ALB endpoint or CloudFront domain
+  // In production, always use the ALB endpoint
+  // S3 static website cannot handle API calls, so we always point to the backend ALB
   if (process.env.NODE_ENV === 'production') {
-    // If deployed to CloudFront, API calls go through the same domain
-    if (window.location.hostname.includes('cloudfront.net') || 
-        window.location.hostname.includes('amazonaws.com')) {
-      return window.location.origin;
-    }
-    // Otherwise use environment variable or default AWS ALB endpoint
-    return process.env.REACT_APP_API_URL || 'https://your-alb-domain.elb.amazonaws.com';
+    // Use environment variable or default AWS ALB endpoint
+    return process.env.REACT_APP_API_URL || 'http://intelliclaim-dev-alb-1813831411.us-east-1.elb.amazonaws.com';
   }
   
   // Development environment

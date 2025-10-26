@@ -28,7 +28,7 @@ variable "vpc_cidr" {
 variable "availability_zones" {
   description = "Number of availability zones to use"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 # Database variables
@@ -93,14 +93,14 @@ variable "allowed_cidr_blocks" {
 variable "enable_detailed_monitoring" {
   description = "Enable detailed CloudWatch monitoring"
   type        = bool
-  default     = true
+  default     = false
 }
 
 # Cost optimization variables
 variable "enable_spot_instances" {
   description = "Enable spot instances for cost optimization"
   type        = bool
-  default     = false
+  default     = true
 }
 
 # Backup variables
@@ -108,4 +108,23 @@ variable "backup_retention_period" {
   description = "RDS backup retention period in days"
   type        = number
   default     = 7
+}
+
+# GitHub variables (optional)
+variable "github_repository" {
+  description = "GitHub repository for CI/CD"
+  type        = string
+  default     = ""
+}
+
+variable "github_branch" {
+  description = "GitHub branch for CI/CD"
+  type        = string
+  default     = "main"
+}
+
+variable "github_connection_arn" {
+  description = "GitHub connection ARN for CI/CD"
+  type        = string
+  default     = ""
 }

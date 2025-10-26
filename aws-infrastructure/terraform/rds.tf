@@ -38,63 +38,59 @@ resource "aws_security_group" "rds" {
   }
 }
 
-# RDS Parameter Group for pgvector
+# RDS Parameter Group for PostgreSQL
 resource "aws_db_parameter_group" "main" {
-  family = "aurora-postgresql15"
+  family = "postgres15"
   name   = "${local.name}-pg-params"
 
-  parameter {
-    name  = "shared_preload_libraries"
-    value = "vector"
-  }
+  # Note: AWS RDS PostgreSQL does not support pgvector extension
+  # IntelliClaim uses ChromaDB for vector storage instead
 
   tags = merge(local.common_tags, {
     Name = "${local.name}-db-parameter-group"
   })
 }
 
-# RDS Cluster
-resource "aws_rds_cluster" "main" {
-  cluster_identifier           = "${local.name}-aurora-cluster"
-  engine                       = "aurora-postgresql"
-  engine_mode                  = "provisioned"
-  engine_version               = "15.4"
-  database_name                = "intelliclaim"
-  master_username              = "postgres"
-  master_password              = var.db_password
-  backup_retention_period      = var.backup_retention_period
-  preferred_backup_window      = "03:00-04:00"
-  preferred_maintenance_window = "sun:04:00-sun:05:00"
-  skip_final_snapshot          = var.environment != "prod"
-  final_snapshot_identifier    = var.environment == "prod" ? "${local.name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
-
-  db_subnet_group_name            = aws_db_subnet_group.main.name
-  vpc_security_group_ids          = [aws_security_group.rds.id]
-  db_cluster_parameter_group_name = aws_db_parameter_group.main.name
-
+# RDS PostgreSQL Single Instance (with pgvector support)
+resource "aws_db_instance" "main" {
+  identifier = "${local.name}-postgres"
+  engine     = "postgres"
+  engine_version = "15.10"
+  
+  instance_class    = var.db_instance_class
+  allocated_storage = 20
+  storage_type      = "gp3"
   storage_encrypted = true
-  kms_key_id        = aws_kms_key.rds.arn
-
-  tags = merge(local.common_tags, {
-    Name = "${local.name}-aurora-cluster"
-  })
-}
-
-# RDS Cluster Instance
-resource "aws_rds_cluster_instance" "main" {
-  count              = 1 # Single instance for cost optimization
-  identifier         = "${local.name}-aurora-instance-${count.index + 1}"
-  cluster_identifier = aws_rds_cluster.main.id
-  instance_class     = var.db_instance_class
-  engine             = aws_rds_cluster.main.engine
-  engine_version     = aws_rds_cluster.main.engine_version
-
+  kms_key_id       = aws_kms_key.rds.arn
+  
+  db_name  = "intelliclaim"
+  username = "postgres"
+  password = var.db_password
+  
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  parameter_group_name   = aws_db_parameter_group.main.name
+  
+  backup_retention_period = var.backup_retention_period
+  backup_window          = "03:00-04:00"
+  maintenance_window     = "sun:04:00-sun:05:00"
+  
+  skip_final_snapshot = var.environment != "prod"
+  final_snapshot_identifier = var.environment == "prod" ? "${local.name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
+  delete_automated_backups = true
+  
+  # Performance Insights
   performance_insights_enabled = var.enable_detailed_monitoring
-  monitoring_interval          = var.enable_detailed_monitoring ? 60 : 0
-  monitoring_role_arn          = var.enable_detailed_monitoring ? aws_iam_role.rds_monitoring[0].arn : null
-
+  
+  # Monitoring
+  monitoring_interval = var.enable_detailed_monitoring ? 60 : 0
+  monitoring_role_arn = var.enable_detailed_monitoring ? aws_iam_role.rds_monitoring[0].arn : null
+  
+  # Auto minor version upgrade
+  auto_minor_version_upgrade = true
+  
   tags = merge(local.common_tags, {
-    Name = "${local.name}-aurora-instance-${count.index + 1}"
+    Name = "${local.name}-postgres"
   })
 }
 
@@ -144,7 +140,7 @@ resource "aws_iam_role_policy_attachment" "rds_monitoring" {
 
 # Secrets Manager for database credentials
 resource "aws_secretsmanager_secret" "db_credentials" {
-  name                    = "${local.name}/database/credentials"
+  name                    = "${local.name}/db/credentials"
   description             = "Database credentials for IntelliClaim"
   recovery_window_in_days = 7
 
@@ -154,11 +150,11 @@ resource "aws_secretsmanager_secret" "db_credentials" {
 resource "aws_secretsmanager_secret_version" "db_credentials" {
   secret_id = aws_secretsmanager_secret.db_credentials.id
   secret_string = jsonencode({
-    username = aws_rds_cluster.main.master_username
-    password = aws_rds_cluster.main.master_password
-    host     = aws_rds_cluster.main.endpoint
-    port     = aws_rds_cluster.main.port
-    database = aws_rds_cluster.main.database_name
+    username = aws_db_instance.main.username
+    password = aws_db_instance.main.password
+    host     = aws_db_instance.main.endpoint
+    port     = aws_db_instance.main.port
+    database = aws_db_instance.main.db_name
   })
 }
 

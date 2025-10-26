@@ -31,29 +31,29 @@ output "nat_gateway_ids" {
 }
 
 # RDS Outputs
-output "rds_cluster_id" {
-  description = "ID of the RDS cluster"
-  value       = aws_rds_cluster.main.id
+output "rds_instance_id" {
+  description = "ID of the RDS instance"
+  value       = aws_db_instance.main.id
 }
 
-output "rds_cluster_endpoint" {
-  description = "Endpoint of the RDS cluster"
-  value       = aws_rds_cluster.main.endpoint
+output "rds_instance_endpoint" {
+  description = "Endpoint of the RDS instance"
+  value       = aws_db_instance.main.endpoint
 }
 
-output "rds_cluster_reader_endpoint" {
-  description = "Reader endpoint of the RDS cluster"
-  value       = aws_rds_cluster.main.reader_endpoint
+output "rds_instance_port" {
+  description = "Port of the RDS instance"
+  value       = aws_db_instance.main.port
 }
 
-output "rds_cluster_port" {
-  description = "Port of the RDS cluster"
-  value       = aws_rds_cluster.main.port
+output "rds_database_name" {
+  description = "RDS database name"
+  value       = aws_db_instance.main.db_name
 }
 
-output "rds_cluster_database_name" {
-  description = "Database name of the RDS cluster"
-  value       = aws_rds_cluster.main.database_name
+output "rds_endpoint" {
+  description = "RDS instance endpoint"
+  value       = aws_db_instance.main.endpoint
 }
 
 # ECS Outputs
@@ -114,31 +114,9 @@ output "s3_bucket_regional_domain_name" {
   value       = aws_s3_bucket.main.bucket_regional_domain_name
 }
 
-output "frontend_s3_bucket_name" {
-  description = "Name of the frontend S3 bucket"
-  value       = aws_s3_bucket.frontend.bucket
-}
+# Frontend S3 outputs removed for cost optimization
 
-output "frontend_s3_bucket_arn" {
-  description = "ARN of the frontend S3 bucket"
-  value       = aws_s3_bucket.frontend.arn
-}
-
-# CloudFront Outputs
-output "cloudfront_distribution_id" {
-  description = "ID of the CloudFront distribution"
-  value       = aws_cloudfront_distribution.frontend.id
-}
-
-output "cloudfront_domain_name" {
-  description = "Domain name of the CloudFront distribution"
-  value       = aws_cloudfront_distribution.frontend.domain_name
-}
-
-output "cloudfront_hosted_zone_id" {
-  description = "Hosted zone ID of the CloudFront distribution"
-  value       = aws_cloudfront_distribution.frontend.hosted_zone_id
-}
+# CloudFront outputs removed for cost optimization
 
 # ECR Outputs
 output "ecr_repository_url" {
@@ -151,15 +129,7 @@ output "ecr_repository_arn" {
   value       = aws_ecr_repository.main.arn
 }
 
-output "frontend_ecr_repository_url" {
-  description = "URL of the frontend ECR repository"
-  value       = aws_ecr_repository.frontend.repository_url
-}
-
-output "frontend_ecr_repository_arn" {
-  description = "ARN of the frontend ECR repository"
-  value       = aws_ecr_repository.frontend.arn
-}
+# Frontend ECR outputs removed for cost optimization
 
 # Secrets Manager Outputs
 output "secrets_manager_secret_arn" {
@@ -212,7 +182,7 @@ output "rds_security_group_id" {
 # Application URLs
 output "application_url" {
   description = "URL of the application"
-  value       = var.domain_name != "" ? "https://${var.domain_name}" : "https://${aws_cloudfront_distribution.frontend.domain_name}"
+  value       = var.domain_name != "" ? "https://${var.domain_name}" : "https://${aws_lb.main.dns_name}"
 }
 
 output "api_url" {
